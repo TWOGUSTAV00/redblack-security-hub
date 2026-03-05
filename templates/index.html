@@ -20,7 +20,7 @@
   <header class="topbar">
     <div>
       <h1>RedBlack Security Hub</h1>
-      <p class="subtitle">Painel cyber completo com APIs reais sem chave</p>
+      <p class="subtitle">Admin audit, banimento, threat intel, vulns e IA assistente</p>
     </div>
     <div class="hacker-corner" aria-hidden="true">
       <div class="hacker">
@@ -35,14 +35,14 @@
   <main>
     <section id="auth-card" class="card auth-card">
       <h2>Acesso Seguro</h2>
-      <p class="small">Ao entrar no painel, o site pede localização para enriquecer os módulos.</p>
+      <p class="small">Ao entrar no painel, o navegador pede sua localizacao para enriquecer os modulos.</p>
       <div class="auth-tabs">
         <button id="btn-login-tab" class="tab active" type="button">Login</button>
         <button id="btn-register-tab" class="tab" type="button">Registrar</button>
       </div>
 
       <form id="login-form">
-        <label for="login-user">Usuário</label>
+        <label for="login-user">Usuario</label>
         <input id="login-user" required minlength="3" />
         <label for="login-pass">Senha</label>
         <input id="login-pass" type="password" required minlength="8" />
@@ -50,7 +50,7 @@
       </form>
 
       <form id="register-form" class="hidden">
-        <label for="reg-user">Novo usuário</label>
+        <label for="reg-user">Novo usuario</label>
         <input id="reg-user" required minlength="3" maxlength="32" />
         <label for="reg-pass">Nova senha</label>
         <input id="reg-pass" type="password" required minlength="8" />
@@ -67,79 +67,167 @@
           <button id="logout-btn" class="btn-outline" type="button">Sair</button>
         </div>
       </div>
+
       <p id="location-status" class="small"></p>
 
-      <div class="grid">
-        <article class="card">
-          <h3>1) Geolocalização por IP</h3>
-          <label for="geo-ip">IP (opcional)</label>
-          <input id="geo-ip" placeholder="Ex.: 8.8.8.8" />
-          <button id="geo-btn" class="btn-danger" type="button">Consultar localização</button>
-          <pre id="geo-output" class="output"></pre>
-        </article>
-
-        <article class="card">
-          <h3>2) Latência/Ping HTTP</h3>
-          <label for="ping-url">URL para teste</label>
-          <input id="ping-url" value="https://example.com" />
-          <button id="ping-btn" class="btn-danger" type="button">Testar latência</button>
-          <pre id="ping-output" class="output"></pre>
-        </article>
-
-        <article class="card full">
-          <h3>3) Mapa global + eventos reais (USGS 24h)</h3>
-          <button id="map-feed-btn" class="btn-danger" type="button">Carregar eventos globais</button>
-          <div id="map"></div>
-        </article>
-
-        <article class="card">
-          <h3>4) Scan de domínio (Shodan InternetDB)</h3>
-          <label for="target-host">Domínio alvo</label>
-          <input id="target-host" placeholder="example.com" />
-          <button id="vuln-btn" class="btn-danger" type="button">Analisar domínio</button>
-          <pre id="vuln-output" class="output"></pre>
-        </article>
-
-        <article class="card">
-          <h3>5) Threat Intel de IP (OTX + Shodan)</h3>
-          <label for="intel-ip">IP alvo</label>
-          <input id="intel-ip" placeholder="8.8.8.8" />
-          <button id="intel-btn" class="btn-danger" type="button">Consultar inteligência</button>
-          <pre id="intel-output" class="output"></pre>
-        </article>
-
-        <article class="card">
-          <h3>6) Botnet/C2 feed (Abuse.ch Feodo)</h3>
-          <label for="feodo-ip">IP para checar na lista (opcional)</label>
-          <input id="feodo-ip" placeholder="1.2.3.4" />
-          <button id="feodo-btn" class="btn-danger" type="button">Consultar feed</button>
-          <pre id="feodo-output" class="output"></pre>
-        </article>
-
-        <article class="card">
-          <h3>7) Últimos CVEs publicados</h3>
-          <label for="cve-limit">Quantidade (1-30)</label>
-          <input id="cve-limit" value="8" />
-          <button id="cve-btn" class="btn-danger" type="button">Buscar CVEs</button>
-          <pre id="cve-output" class="output"></pre>
-        </article>
-
-        <article class="card">
-          <h3>8) Certificados do domínio (CT logs)</h3>
-          <label for="cert-domain">Domínio</label>
-          <input id="cert-domain" placeholder="example.com" />
-          <button id="cert-btn" class="btn-danger" type="button">Consultar crt.sh</button>
-          <pre id="cert-output" class="output"></pre>
-        </article>
-
-        <article class="card">
-          <h3>9) Senha vazada? (Pwned Passwords)</h3>
-          <label for="pwd-check">Senha para verificar</label>
-          <input id="pwd-check" type="password" placeholder="Digite para checagem" />
-          <button id="pwd-btn" class="btn-danger" type="button">Checar vazamento</button>
-          <pre id="pwd-output" class="output"></pre>
-        </article>
+      <div class="topic-nav">
+        <button class="topic-btn active" data-topic="admin">Admin</button>
+        <button class="topic-btn" data-topic="geo">Geo & Mapa</button>
+        <button class="topic-btn" data-topic="intel">Threat Intel</button>
+        <button class="topic-btn" data-topic="vuln">Vulnerabilidades</button>
+        <button class="topic-btn" data-topic="ai">IA Assistente</button>
       </div>
+
+      <section id="topic-admin" class="topic-panel active">
+        <h3 class="topic-title">Topico: Controle Administrativo</h3>
+        <div id="admin-only" class="grid hidden">
+          <article class="card full">
+            <h3>Auditoria de acessos (visitou e logou)</h3>
+            <label for="audit-limit">Quantidade de registros</label>
+            <input id="audit-limit" value="80" />
+            <button id="audit-btn" class="btn-danger" type="button">Atualizar auditoria</button>
+            <pre id="audit-output" class="output"></pre>
+          </article>
+
+          <article class="card">
+            <h3>Banir usuario</h3>
+            <label for="ban-user">Usuario</label>
+            <input id="ban-user" placeholder="usuario_alvo" />
+            <label for="ban-user-reason">Motivo</label>
+            <input id="ban-user-reason" placeholder="Motivo do banimento" />
+            <button id="ban-user-btn" class="btn-danger" type="button">Banir usuario</button>
+          </article>
+
+          <article class="card">
+            <h3>Banir IP</h3>
+            <label for="ban-ip">IP</label>
+            <input id="ban-ip" placeholder="1.2.3.4" />
+            <label for="ban-ip-reason">Motivo</label>
+            <input id="ban-ip-reason" placeholder="Motivo do banimento" />
+            <button id="ban-ip-btn" class="btn-danger" type="button">Banir IP</button>
+          </article>
+
+          <article class="card full">
+            <h3>Lista de banidos</h3>
+            <label for="unban-type">Tipo</label>
+            <input id="unban-type" placeholder="username ou ip" />
+            <label for="unban-value">Valor</label>
+            <input id="unban-value" placeholder="usuario ou IP" />
+            <button id="unban-btn" class="btn-danger" type="button">Desbanir</button>
+            <button id="bans-refresh-btn" class="btn-outline" type="button">Atualizar bans</button>
+            <pre id="bans-output" class="output"></pre>
+          </article>
+        </div>
+        <div id="admin-disabled" class="card hidden">
+          <p class="small">Este topico esta disponivel apenas para o usuario administrador (Nemo).</p>
+        </div>
+      </section>
+
+      <section id="topic-geo" class="topic-panel">
+        <h3 class="topic-title">Topico: Geolocalizacao e Mapa</h3>
+        <div class="grid">
+          <article class="card">
+            <h3>Geolocalizacao por IP</h3>
+            <label for="geo-ip">IP (opcional)</label>
+            <input id="geo-ip" placeholder="Ex.: 8.8.8.8" />
+            <button id="geo-btn" class="btn-danger" type="button">Consultar localizacao</button>
+            <pre id="geo-output" class="output"></pre>
+          </article>
+
+          <article class="card">
+            <h3>Latencia/Ping HTTP</h3>
+            <label for="ping-url">URL para teste</label>
+            <input id="ping-url" value="https://example.com" />
+            <button id="ping-btn" class="btn-danger" type="button">Testar latencia</button>
+            <pre id="ping-output" class="output"></pre>
+          </article>
+
+          <article class="card full">
+            <h3>Mapa global + eventos reais (USGS 24h)</h3>
+            <button id="map-feed-btn" class="btn-danger" type="button">Carregar eventos globais</button>
+            <div id="map"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="topic-intel" class="topic-panel">
+        <h3 class="topic-title">Topico: Threat Intelligence</h3>
+        <div class="grid">
+          <article class="card">
+            <h3>Intel de IP (OTX + Shodan)</h3>
+            <label for="intel-ip">IP alvo</label>
+            <input id="intel-ip" placeholder="8.8.8.8" />
+            <button id="intel-btn" class="btn-danger" type="button">Consultar inteligencia</button>
+            <pre id="intel-output" class="output"></pre>
+          </article>
+
+          <article class="card">
+            <h3>Intel de dominio (OTX)</h3>
+            <label for="intel-domain">Dominio</label>
+            <input id="intel-domain" placeholder="example.com" />
+            <button id="intel-domain-btn" class="btn-danger" type="button">Consultar dominio</button>
+            <pre id="intel-domain-output" class="output"></pre>
+          </article>
+
+          <article class="card full">
+            <h3>Feed de C2/Botnet (Abuse.ch Feodo)</h3>
+            <label for="feodo-ip">IP para checar (opcional)</label>
+            <input id="feodo-ip" placeholder="1.2.3.4" />
+            <button id="feodo-btn" class="btn-danger" type="button">Consultar feed</button>
+            <pre id="feodo-output" class="output"></pre>
+          </article>
+        </div>
+      </section>
+
+      <section id="topic-vuln" class="topic-panel">
+        <h3 class="topic-title">Topico: Vulnerabilidades e Exposicao</h3>
+        <div class="grid">
+          <article class="card">
+            <h3>Scan de dominio (Shodan InternetDB)</h3>
+            <label for="target-host">Dominio alvo</label>
+            <input id="target-host" placeholder="example.com" />
+            <button id="vuln-btn" class="btn-danger" type="button">Analisar dominio</button>
+            <pre id="vuln-output" class="output"></pre>
+          </article>
+
+          <article class="card">
+            <h3>Ultimos CVEs publicados</h3>
+            <label for="cve-limit">Quantidade (1-30)</label>
+            <input id="cve-limit" value="8" />
+            <button id="cve-btn" class="btn-danger" type="button">Buscar CVEs</button>
+            <pre id="cve-output" class="output"></pre>
+          </article>
+
+          <article class="card">
+            <h3>Certificados do dominio (CT logs)</h3>
+            <label for="cert-domain">Dominio</label>
+            <input id="cert-domain" placeholder="example.com" />
+            <button id="cert-btn" class="btn-danger" type="button">Consultar crt.sh</button>
+            <pre id="cert-output" class="output"></pre>
+          </article>
+
+          <article class="card">
+            <h3>Senha vazada? (Pwned Passwords)</h3>
+            <label for="pwd-check">Senha para verificar</label>
+            <input id="pwd-check" type="password" placeholder="Digite para checagem" />
+            <button id="pwd-btn" class="btn-danger" type="button">Checar vazamento</button>
+            <pre id="pwd-output" class="output"></pre>
+          </article>
+        </div>
+      </section>
+
+      <section id="topic-ai" class="topic-panel">
+        <h3 class="topic-title">Topico: IA Assistente de Seguranca</h3>
+        <div class="grid">
+          <article class="card full">
+            <h3>Pergunte para a IA</h3>
+            <label for="ai-question">Pergunta</label>
+            <input id="ai-question" placeholder="Ex.: como endurecer meu servidor Linux?" />
+            <button id="ai-ask-btn" class="btn-danger" type="button">Perguntar</button>
+            <pre id="ai-output" class="output"></pre>
+          </article>
+        </div>
+      </section>
     </section>
   </main>
 

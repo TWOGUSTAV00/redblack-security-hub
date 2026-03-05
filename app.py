@@ -7,7 +7,7 @@ import sqlite3
 import time
 from datetime import timedelta
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 import requests
 from flask import Flask, jsonify, render_template, request, session
@@ -17,6 +17,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "app.db"
 ALLOWED_SCHEMES = {"http", "https"}
+ADMIN_USERNAME = "Nemo"
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "nemo-redblack-secret-change-me")
@@ -25,12 +26,62 @@ app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=8)
 
 login_attempts = {}
+geo_cache = {}
 
 
 def db_conn():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def extract_client_ip():
+    cf = (request.headers.get("CF-Connecting-IP") or "").strip()
+    if cf:
+        return cf
+    xff = (request.headers.get("X-Forwarded-For") or "").strip()
+    if xff:
+        return xff.split(",")[0].strip()
+    return (request.remote_addr or "unknown").strip()
+
+
+def valid_ip(value):
+    try:
+        ipaddress.ip_address(value)
+        return True
+    except ValueError:
+        return False
+
+
+def lookup_geo_by_ip(ip):
+    if not valid_ip(ip):
+        return {}
+    if ip in geo_cache:
+        return geo_cache[ip]
+
+    try:
+        r = requests.get(f"https://ipwho.is/{ip}", timeout=10)
+        r.raise_for_status()
+        data = r.json()
+        if not data.get("success"):
+            return {}
+        out = {
+            "city": data.get("city"),
+            "region": data.get("region"),
+            "country": data.get("country"),
+            "latitude": data.get("latitude"),
+            "longitude": data.get("longitude"),
+        }
+        geo_cache[ip] = out
+        return out
+    except requests.RequestException:
+        return {}
+
+
+def ensure_users_schema(conn):
+    cols = {row["name"] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
+    if "is_banned" not in cols:
+        conn.execute("ALTER TABLE users ADD COLUMN is_banned INTEGER NOT NULL DEFAULT 0")
 
 
 def init_db():
@@ -41,26 +92,86 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
+            is_banned INTEGER NOT NULL DEFAULT 0,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    ensure_users_schema(conn)
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS access_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_type TEXT NOT NULL,
+            username TEXT,
+            ip TEXT,
+            user_agent TEXT,
+            city TEXT,
+            region TEXT,
+            country TEXT,
+            latitude REAL,
+            longitude REAL,
+            details TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS bans (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            target_type TEXT NOT NULL,
+            target_value TEXT NOT NULL,
+            reason TEXT,
+            created_by TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(target_type, target_value)
         )
         """
     )
     conn.commit()
 
-    admin_user = "Nemo"
     admin_pass = "gustavo270998"
-    row = conn.execute("SELECT id FROM users WHERE username = ?", (admin_user,)).fetchone()
+    row = conn.execute("SELECT id FROM users WHERE username = ?", (ADMIN_USERNAME,)).fetchone()
     if row:
         conn.execute(
-            "UPDATE users SET password_hash = ? WHERE username = ?",
-            (generate_password_hash(admin_pass), admin_user),
+            "UPDATE users SET password_hash = ?, is_banned = 0 WHERE username = ?",
+            (generate_password_hash(admin_pass), ADMIN_USERNAME),
         )
     else:
         conn.execute(
-            "INSERT INTO users (username, password_hash) VALUES (?, ?)",
-            (admin_user, generate_password_hash(admin_pass)),
+            "INSERT INTO users (username, password_hash, is_banned) VALUES (?, ?, 0)",
+            (ADMIN_USERNAME, generate_password_hash(admin_pass)),
         )
 
+    conn.commit()
+    conn.close()
+
+
+def record_access(event_type, username=None, details=None):
+    ip = extract_client_ip()
+    geo = lookup_geo_by_ip(ip)
+    conn = db_conn()
+    conn.execute(
+        """
+        INSERT INTO access_logs (event_type, username, ip, user_agent, city, region, country, latitude, longitude, details)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            event_type,
+            username,
+            ip,
+            (request.headers.get("User-Agent") or "")[:400],
+            geo.get("city"),
+            geo.get("region"),
+            geo.get("country"),
+            geo.get("latitude"),
+            geo.get("longitude"),
+            details,
+        ),
+    )
     conn.commit()
     conn.close()
 
@@ -69,10 +180,49 @@ def current_user():
     return session.get("username")
 
 
+def is_admin(user):
+    return user == ADMIN_USERNAME
+
+
+def is_banned_ip(ip):
+    if not ip:
+        return False
+    conn = db_conn()
+    row = conn.execute(
+        "SELECT 1 FROM bans WHERE target_type='ip' AND target_value=?", (ip,)
+    ).fetchone()
+    conn.close()
+    return bool(row)
+
+
+def is_banned_user(username):
+    if not username:
+        return False
+    conn = db_conn()
+    row = conn.execute("SELECT is_banned FROM users WHERE username=?", (username,)).fetchone()
+    extra = conn.execute(
+        "SELECT 1 FROM bans WHERE target_type='username' AND target_value=?", (username,)
+    ).fetchone()
+    conn.close()
+    return bool((row and row["is_banned"]) or extra)
+
+
 def require_auth():
     user = current_user()
     if not user:
         return None, (jsonify({"error": "Nao autenticado"}), 401)
+    if is_banned_user(user):
+        session.clear()
+        return None, (jsonify({"error": "Usuario banido"}), 403)
+    return user, None
+
+
+def require_admin():
+    user, err = require_auth()
+    if err:
+        return None, err
+    if not is_admin(user):
+        return None, (jsonify({"error": "Acesso restrito ao administrador"}), 403)
     return user, None
 
 
@@ -100,14 +250,6 @@ def valid_domain(host):
     return bool(re.fullmatch(r"[a-z0-9.-]{3,255}", host or ""))
 
 
-def valid_ip(value):
-    try:
-        ipaddress.ip_address(value)
-        return True
-    except ValueError:
-        return False
-
-
 @app.after_request
 def secure_headers(resp):
     resp.headers["X-Content-Type-Options"] = "nosniff"
@@ -119,6 +261,7 @@ def secure_headers(resp):
 
 @app.get("/")
 def home():
+    record_access("visit", current_user() or "guest")
     return render_template("index.html")
 
 
@@ -130,7 +273,7 @@ def health():
 @app.get("/api/auth/me")
 def auth_me():
     user = current_user()
-    return jsonify({"authenticated": bool(user), "username": user})
+    return jsonify({"authenticated": bool(user), "username": user, "is_admin": is_admin(user)})
 
 
 @app.post("/api/auth/register")
@@ -144,10 +287,13 @@ def auth_register():
     if not valid_password(password):
         return jsonify({"error": "Senha invalida. Minimo 8 caracteres."}), 400
 
+    if is_banned_user(username):
+        return jsonify({"error": "Usuario bloqueado pelo administrador"}), 403
+
     conn = db_conn()
     try:
         conn.execute(
-            "INSERT INTO users (username, password_hash) VALUES (?, ?)",
+            "INSERT INTO users (username, password_hash, is_banned) VALUES (?, ?, 0)",
             (username, generate_password_hash(password)),
         )
         conn.commit()
@@ -161,35 +307,164 @@ def auth_register():
 
 @app.post("/api/auth/login")
 def auth_login():
-    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "unknown")
+    ip = extract_client_ip()
     now = time.time()
     data = request.get_json(silent=True) or {}
     username = (data.get("username") or "").strip()
     password = data.get("password") or ""
 
+    if is_banned_ip(ip):
+        record_access("login_blocked", username or "unknown", "ip_banned")
+        return jsonify({"error": "IP banido pelo administrador"}), 403
+
     tries = [t for t in login_attempts.get(ip, []) if now - t < 300]
     login_attempts[ip] = tries
     if len(tries) >= 10:
+        record_access("login_blocked", username or "unknown", "rate_limited")
         return jsonify({"error": "Muitas tentativas. Aguarde 5 minutos."}), 429
 
     conn = db_conn()
     row = conn.execute(
-        "SELECT username, password_hash FROM users WHERE username = ?", (username,)
+        "SELECT username, password_hash, is_banned FROM users WHERE username = ?", (username,)
     ).fetchone()
     conn.close()
 
     if not row or not check_password_hash(row["password_hash"], password):
         login_attempts[ip].append(now)
+        record_access("login_failed", username or "unknown", "invalid_credentials")
         return jsonify({"error": "Credenciais invalidas"}), 401
+
+    if row["is_banned"] or is_banned_user(username):
+        record_access("login_blocked", username, "user_banned")
+        return jsonify({"error": "Usuario banido pelo administrador"}), 403
 
     session.clear()
     session["username"] = row["username"]
-    return jsonify({"ok": True, "username": row["username"]})
+    record_access("login_success", row["username"])
+    return jsonify({"ok": True, "username": row["username"], "is_admin": is_admin(row["username"])})
 
 
 @app.post("/api/auth/logout")
 def auth_logout():
+    user = current_user() or "unknown"
+    record_access("logout", user)
     session.clear()
+    return jsonify({"ok": True})
+
+
+@app.get("/api/admin/audit")
+def admin_audit():
+    _, err = require_admin()
+    if err:
+        return err
+
+    try:
+        limit = max(10, min(300, int(request.args.get("limit", "80"))))
+    except ValueError:
+        limit = 80
+
+    conn = db_conn()
+    rows = conn.execute(
+        """
+        SELECT id, event_type, username, ip, city, region, country, user_agent, details, created_at
+        FROM access_logs
+        ORDER BY id DESC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    conn.close()
+
+    return jsonify(
+        {
+            "count": len(rows),
+            "items": [dict(r) for r in rows],
+        }
+    )
+
+
+@app.get("/api/admin/bans")
+def admin_bans():
+    _, err = require_admin()
+    if err:
+        return err
+
+    conn = db_conn()
+    rows = conn.execute(
+        "SELECT id, target_type, target_value, reason, created_by, created_at FROM bans ORDER BY id DESC"
+    ).fetchall()
+    conn.close()
+    return jsonify({"count": len(rows), "items": [dict(r) for r in rows]})
+
+
+@app.post("/api/admin/ban")
+def admin_ban():
+    admin_user, err = require_admin()
+    if err:
+        return err
+
+    data = request.get_json(silent=True) or {}
+    target_type = (data.get("target_type") or "").strip().lower()
+    target_value = (data.get("target_value") or "").strip()
+    reason = (data.get("reason") or "Sem motivo informado").strip()[:200]
+
+    if target_type not in {"username", "ip"}:
+        return jsonify({"error": "target_type deve ser username ou ip"}), 400
+
+    if target_type == "username":
+        if not valid_username(target_value):
+            return jsonify({"error": "Usuario invalido"}), 400
+        if target_value == ADMIN_USERNAME:
+            return jsonify({"error": "Admin nao pode banir a propria conta"}), 400
+        conn = db_conn()
+        conn.execute("UPDATE users SET is_banned = 1 WHERE username = ?", (target_value,))
+        conn.execute(
+            "INSERT OR REPLACE INTO bans (target_type, target_value, reason, created_by) VALUES ('username', ?, ?, ?)",
+            (target_value, reason, admin_user),
+        )
+        conn.commit()
+        conn.close()
+        record_access("admin_ban", admin_user, f"username:{target_value}")
+        return jsonify({"ok": True})
+
+    if not valid_ip(target_value):
+        return jsonify({"error": "IP invalido"}), 400
+
+    conn = db_conn()
+    conn.execute(
+        "INSERT OR REPLACE INTO bans (target_type, target_value, reason, created_by) VALUES ('ip', ?, ?, ?)",
+        (target_value, reason, admin_user),
+    )
+    conn.commit()
+    conn.close()
+    record_access("admin_ban", admin_user, f"ip:{target_value}")
+    return jsonify({"ok": True})
+
+
+@app.post("/api/admin/unban")
+def admin_unban():
+    admin_user, err = require_admin()
+    if err:
+        return err
+
+    data = request.get_json(silent=True) or {}
+    target_type = (data.get("target_type") or "").strip().lower()
+    target_value = (data.get("target_value") or "").strip()
+
+    if target_type not in {"username", "ip"}:
+        return jsonify({"error": "target_type deve ser username ou ip"}), 400
+
+    conn = db_conn()
+    if target_type == "username":
+        conn.execute("UPDATE users SET is_banned = 0 WHERE username = ?", (target_value,))
+
+    conn.execute(
+        "DELETE FROM bans WHERE target_type = ? AND target_value = ?", (target_type, target_value)
+    )
+    conn.commit()
+    conn.close()
+
+    record_access("admin_unban", admin_user, f"{target_type}:{target_value}")
     return jsonify({"ok": True})
 
 
@@ -377,9 +652,7 @@ def intel_ip():
         return jsonify({"error": "IP invalido"}), 400
 
     shodan_resp = requests.get(f"https://internetdb.shodan.io/{ip}", timeout=12)
-    shodan_data = {}
-    if shodan_resp.status_code == 200:
-        shodan_data = shodan_resp.json()
+    shodan_data = shodan_resp.json() if shodan_resp.status_code == 200 else {}
 
     otx_resp = requests.get(
         f"https://otx.alienvault.com/api/v1/indicators/IPv4/{ip}/general", timeout=12
@@ -396,12 +669,39 @@ def intel_ip():
             "reputation": otx.get("reputation"),
             "country": (otx.get("country_name") or ""),
             "asn": otx.get("asn"),
-            "malware_samples": len((otx.get("malware") or {}).get("data", [])),
             "pulse_count": len((otx.get("pulse_info") or {}).get("pulses", [])),
             "pulse_names": pulse_names,
             "open_ports": shodan_data.get("ports", []),
             "known_vulns": shodan_data.get("vulns", []),
             "tags": shodan_data.get("tags", []),
+        }
+    )
+
+
+@app.get("/api/intel/domain")
+def intel_domain():
+    _, err = require_auth()
+    if err:
+        return err
+
+    domain = (request.args.get("domain") or "").strip().lower()
+    if not valid_domain(domain):
+        return jsonify({"error": "Dominio invalido"}), 400
+
+    r = requests.get(
+        f"https://otx.alienvault.com/api/v1/indicators/domain/{domain}/general", timeout=12
+    )
+    r.raise_for_status()
+    d = r.json()
+
+    return jsonify(
+        {
+            "domain": domain,
+            "pulse_count": len((d.get("pulse_info") or {}).get("pulses", [])),
+            "alexa": d.get("alexa"),
+            "whois": d.get("whois"),
+            "country": d.get("country_code"),
+            "sections": d.get("sections", []),
         }
     )
 
@@ -450,9 +750,7 @@ def cves_latest():
         md = item.get("cveMetadata", {})
         cont = (item.get("containers") or {}).get("cna", {})
         descs = cont.get("descriptions", [])
-        description = ""
-        if descs:
-            description = descs[0].get("value", "")
+        description = descs[0].get("value", "") if descs else ""
         simplified.append(
             {
                 "cve": md.get("cveId"),
@@ -520,9 +818,7 @@ def password_pwned_check():
     found = 0
     for line in r.text.splitlines():
         parts = line.split(":")
-        if len(parts) != 2:
-            continue
-        if parts[0].strip().upper() == suffix:
+        if len(parts) == 2 and parts[0].strip().upper() == suffix:
             try:
                 found = int(parts[1].strip())
             except ValueError:
@@ -537,6 +833,46 @@ def password_pwned_check():
             "source": "HaveIBeenPwned Pwned Passwords API",
         }
     )
+
+
+@app.post("/api/ai/ask")
+def ai_ask():
+    _, err = require_auth()
+    if err:
+        return err
+
+    data = request.get_json(silent=True) or {}
+    question = (data.get("question") or "").strip()
+    if len(question) < 3:
+        return jsonify({"error": "Pergunta muito curta"}), 400
+
+    prompt = (
+        "Voce e um assistente de ciberseguranca. Responda em portugues, de forma objetiva e segura. "
+        "Pergunta: " + question
+    )
+
+    # Primary free no-key LLM endpoint.
+    try:
+        url = f"https://text.pollinations.ai/{quote(prompt)}"
+        r = requests.get(url, timeout=25)
+        r.raise_for_status()
+        answer = (r.text or "").strip()
+        if answer:
+            return jsonify({"answer": answer[:3500], "source": "Pollinations AI"})
+    except requests.RequestException:
+        pass
+
+    # Fallback if AI provider is unavailable.
+    ddg = requests.get(
+        "https://api.duckduckgo.com/",
+        params={"q": question, "format": "json", "no_html": 1, "no_redirect": 1},
+        timeout=15,
+    )
+    ddg.raise_for_status()
+    j = ddg.json()
+
+    fallback = j.get("AbstractText") or j.get("Answer") or "Nao consegui gerar resposta no momento."
+    return jsonify({"answer": fallback, "source": "DuckDuckGo Instant Answer fallback"})
 
 
 @app.errorhandler(requests.RequestException)
