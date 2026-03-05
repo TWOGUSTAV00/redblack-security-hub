@@ -9,6 +9,15 @@ function output(id, value) {
   el.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
 }
 
+function escapeHtml(text) {
+  return (text || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
 async function api(path, options = {}) {
   const res = await fetch(path, {
     ...options,
@@ -146,6 +155,79 @@ async function unbanAction() {
   }
 }
 
+function renderAiHistory(items) {
+  const historyList = document.getElementById("ai-history-list");
+  const stream = document.getElementById("ai-chat-stream");
+  if (!historyList || !stream) return;
+
+  const userQuestions = items.filter((m) => m.role === "user").slice(-30).reverse();
+  historyList.innerHTML = userQuestions
+    .map(
+      (m) => `<button class="ai-history-item" type="button">${escapeHtml((m.content || "").slice(0, 70))}</button>`
+    )
+    .join("");
+
+  if (!items.length) {
+    stream.innerHTML = '<div class="ai-empty">Historico vazio. Faca a primeira pergunta para o Nemo IA.</div>';
+    return;
+  }
+
+  stream.innerHTML = items
+    .map((m) => {
+      const roleClass = m.role === "user" ? "user" : "assistant";
+      const sourceLine = m.source ? `<div class="ai-source">Fonte: ${escapeHtml(m.source)}</div>` : "";
+      return `
+        <div class="ai-msg ${roleClass}">
+          <div class="ai-role">${m.role === "user" ? "Voce" : "Nemo IA"}</div>
+          <div class="ai-content">${escapeHtml(m.content)}</div>
+          ${sourceLine}
+        </div>
+      `;
+    })
+    .join("");
+
+  stream.scrollTop = stream.scrollHeight;
+}
+
+async function loadAiHistory() {
+  try {
+    const data = await api("/api/ai/history?limit=160", { method: "GET", headers: {} });
+    renderAiHistory(data.items || []);
+  } catch (err) {
+    const stream = document.getElementById("ai-chat-stream");
+    if (stream) stream.innerHTML = `<div class="ai-empty">Erro ao carregar historico: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+async function onAiAsk() {
+  const input = document.getElementById("ai-question");
+  const question = input.value.trim();
+  if (!question) return;
+
+  input.value = "";
+  const stream = document.getElementById("ai-chat-stream");
+  if (stream) {
+    stream.innerHTML += `
+      <div class="ai-msg user"><div class="ai-role">Voce</div><div class="ai-content">${escapeHtml(question)}</div></div>
+      <div class="ai-msg assistant"><div class="ai-role">Nemo IA</div><div class="ai-content">Pensando...</div></div>
+    `;
+    stream.scrollTop = stream.scrollHeight;
+  }
+
+  try {
+    await api("/api/ai/ask", {
+      method: "POST",
+      body: JSON.stringify({ question }),
+    });
+    await loadAiHistory();
+  } catch (err) {
+    if (stream) {
+      stream.innerHTML += `<div class="ai-empty">Erro: ${escapeHtml(err.message)}</div>`;
+      stream.scrollTop = stream.scrollHeight;
+    }
+  }
+}
+
 function showDashboard(user, adminFlag) {
   isAdmin = !!adminFlag;
   document.getElementById("auth-card").classList.add("hidden");
@@ -161,6 +243,7 @@ function showDashboard(user, adminFlag) {
     refreshAudit();
     refreshBans();
   }
+  loadAiHistory();
 }
 
 function showAuth() {
@@ -238,16 +321,61 @@ async function onGeo() {
   }
 }
 
-async function onPing() {
-  output("ping-output", "Executando medicao...");
+async function onConnectionTest() {
+  output("conn-output", "Executando speed test (latencia, download e upload)...");
+
   try {
-    const data = await api("/api/ping", {
-      method: "POST",
-      body: JSON.stringify({ url: document.getElementById("ping-url").value.trim() }),
+    const pingSamples = [];
+    for (let i = 0; i < 4; i += 1) {
+      const t0 = performance.now();
+      await fetch(`/health?ts=${Date.now()}-${i}`, { cache: "no-store", credentials: "same-origin" });
+      pingSamples.push(performance.now() - t0);
+    }
+    const pingMs = pingSamples.reduce((a, b) => a + b, 0) / pingSamples.length;
+
+    const downSizeMb = 6;
+    const d0 = performance.now();
+    const downRes = await fetch(`/api/network/download-test?size_mb=${downSizeMb}&ts=${Date.now()}`, {
+      cache: "no-store",
+      credentials: "same-origin",
     });
-    output("ping-output", data);
+    const downBlob = await downRes.blob();
+    const dSec = (performance.now() - d0) / 1000;
+    const downloadMbps = ((downBlob.size * 8) / dSec) / (1024 * 1024);
+
+    const upSizeMb = 3;
+    const upBytes = upSizeMb * 1024 * 1024;
+    const buffer = new Uint8Array(upBytes);
+    for (let i = 0; i < buffer.length; i += 1) buffer[i] = i % 255;
+
+    const u0 = performance.now();
+    await fetch(`/api/network/upload-test?ts=${Date.now()}`, {
+      method: "POST",
+      body: buffer,
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/octet-stream" },
+    });
+    const uSec = (performance.now() - u0) / 1000;
+    const uploadMbps = ((upBytes * 8) / uSec) / (1024 * 1024);
+
+    const net = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    const browserHints = net
+      ? {
+          effective_type: net.effectiveType,
+          downlink_hint_mbps: net.downlink,
+          rtt_hint_ms: net.rtt,
+        }
+      : null;
+
+    output("conn-output", {
+      ping_ms_avg: Number(pingMs.toFixed(2)),
+      download_mbps: Number(downloadMbps.toFixed(2)),
+      upload_mbps: Number(uploadMbps.toFixed(2)),
+      browser_network_hint: browserHints,
+      notes: "Valores aproximados com base no servidor atual.",
+    });
   } catch (err) {
-    output("ping-output", `Erro: ${err.message}`);
+    output("conn-output", `Erro no speed test: ${err.message}`);
   }
 }
 
@@ -356,19 +484,6 @@ async function onPwnedPassword() {
   }
 }
 
-async function onAiAsk() {
-  output("ai-output", "IA pensando...");
-  try {
-    const data = await api("/api/ai/ask", {
-      method: "POST",
-      body: JSON.stringify({ question: document.getElementById("ai-question").value.trim() }),
-    });
-    output("ai-output", `${data.answer}\n\nFonte: ${data.source}`);
-  } catch (err) {
-    output("ai-output", `Erro: ${err.message}`);
-  }
-}
-
 function bindEvents() {
   document.getElementById("btn-login-tab").addEventListener("click", () => switchAuthTab(true));
   document.getElementById("btn-register-tab").addEventListener("click", () => switchAuthTab(false));
@@ -403,7 +518,7 @@ function bindEvents() {
   document.getElementById("unban-btn").addEventListener("click", unbanAction);
 
   document.getElementById("geo-btn").addEventListener("click", onGeo);
-  document.getElementById("ping-btn").addEventListener("click", onPing);
+  document.getElementById("conn-test-btn").addEventListener("click", onConnectionTest);
   document.getElementById("map-feed-btn").addEventListener("click", onMapFeed);
 
   document.getElementById("intel-btn").addEventListener("click", onIntelIp);
@@ -416,6 +531,10 @@ function bindEvents() {
   document.getElementById("pwd-btn").addEventListener("click", onPwnedPassword);
 
   document.getElementById("ai-ask-btn").addEventListener("click", onAiAsk);
+  document.getElementById("ai-refresh-btn").addEventListener("click", loadAiHistory);
+  document.getElementById("ai-question").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") onAiAsk();
+  });
 }
 
 function boot() {

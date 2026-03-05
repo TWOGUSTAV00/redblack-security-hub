@@ -3,7 +3,6 @@
   --panel: #101010;
   --panel-soft: #171717;
   --red: #d90429;
-  --red-soft: #9d0208;
   --text: #f4f4f4;
   --muted: #b8b8b8;
   --ok: #31c48d;
@@ -54,14 +53,7 @@ h1, h2, h3 {
 .subtitle { margin: 0; color: var(--muted); }
 
 .hacker-corner { min-width: 130px; display: grid; place-items: center; }
-
-.hacker {
-  width: 112px;
-  height: 112px;
-  position: relative;
-  animation: floaty 2.8s ease-in-out infinite;
-}
-
+.hacker { width: 112px; height: 112px; position: relative; animation: floaty 2.8s ease-in-out infinite; }
 .head {
   width: 28px;
   height: 28px;
@@ -72,7 +64,6 @@ h1, h2, h3 {
   left: 42px;
   z-index: 3;
 }
-
 .hood {
   width: 50px;
   height: 46px;
@@ -84,7 +75,6 @@ h1, h2, h3 {
   left: 31px;
   z-index: 2;
 }
-
 .body {
   width: 68px;
   height: 36px;
@@ -95,7 +85,6 @@ h1, h2, h3 {
   top: 45px;
   left: 22px;
 }
-
 .laptop {
   width: 82px;
   height: 48px;
@@ -129,7 +118,6 @@ main {
   box-shadow: 0 10px 20px rgba(0, 0, 0, 0.28);
   transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease;
 }
-
 .card:hover {
   transform: translateY(-2px);
   border-color: #5b1a23;
@@ -138,7 +126,6 @@ main {
 
 .full { grid-column: 1 / -1; }
 .auth-card { max-width: 520px; margin: 12px auto; }
-
 .auth-tabs { display: flex; gap: 8px; margin: 10px 0; }
 
 .tab,
@@ -151,13 +138,11 @@ main {
   cursor: pointer;
   transition: transform 0.2s ease, border-color 0.2s ease;
 }
-
 .tab:hover,
 .topic-btn:hover {
   transform: translateY(-1px);
   border-color: #d44;
 }
-
 .tab.active,
 .topic-btn.active {
   border-color: var(--red);
@@ -165,7 +150,6 @@ main {
 }
 
 label { display: block; margin: 8px 0 4px; color: #dedede; }
-
 input {
   width: 100%;
   background: #0b0b0b;
@@ -184,13 +168,11 @@ input {
   cursor: pointer;
   font-family: "Share Tech Mono", monospace;
 }
-
 .btn-danger {
   background: linear-gradient(160deg, #d90429, #9d0208);
   color: white;
   border: 1px solid #fa2d4d;
 }
-
 .btn-outline {
   background: transparent;
   color: var(--text);
@@ -198,7 +180,6 @@ input {
 }
 
 .message { min-height: 20px; margin-top: 10px; color: var(--warn); }
-
 .actions-row {
   display: flex;
   justify-content: space-between;
@@ -207,26 +188,10 @@ input {
   gap: 12px;
 }
 
-.topic-nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 14px 0;
-}
-
-.topic-panel {
-  display: none;
-  animation: fadeIn 0.35s ease;
-}
-
-.topic-panel.active {
-  display: block;
-}
-
-.topic-title {
-  margin: 4px 0 12px;
-  color: #f0d3d8;
-}
+.topic-nav { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+.topic-panel { display: none; animation: fadeIn 0.35s ease; }
+.topic-panel.active { display: block; }
+.topic-title { margin: 4px 0 12px; color: #f0d3d8; }
 
 .output {
   min-height: 90px;
@@ -247,6 +212,113 @@ input {
   margin-top: 10px;
 }
 
+.nemo-ai-shell {
+  display: grid;
+  grid-template-columns: 270px 1fr;
+  gap: 12px;
+  min-height: 560px;
+}
+
+.nemo-ai-sidebar {
+  background: #0f0f0f;
+  border: 1px solid #2c2c2c;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.ai-history-list {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 460px;
+  overflow-y: auto;
+}
+
+.ai-history-item {
+  width: 100%;
+  text-align: left;
+  border: 1px solid #2e2e2e;
+  background: #131313;
+  color: #efefef;
+  padding: 9px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.nemo-ai-main {
+  background: linear-gradient(150deg, #111, #151515);
+  border: 1px solid #2d2d2d;
+  border-radius: 12px;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-height: 560px;
+}
+
+.nemo-ai-head {
+  padding: 14px;
+  border-bottom: 1px solid #2b2b2b;
+  color: #f5d6dc;
+  font-family: "Share Tech Mono", monospace;
+}
+
+.ai-chat-stream {
+  padding: 14px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ai-msg {
+  max-width: 85%;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid #2f2f2f;
+}
+
+.ai-msg.user {
+  align-self: flex-end;
+  background: #2a0e13;
+  border-color: #6b1d2d;
+}
+
+.ai-msg.assistant {
+  align-self: flex-start;
+  background: #141414;
+}
+
+.ai-role {
+  font-size: 0.8rem;
+  color: #c9c9c9;
+  margin-bottom: 5px;
+}
+
+.ai-content {
+  white-space: pre-wrap;
+  line-height: 1.35;
+}
+
+.ai-source {
+  margin-top: 6px;
+  font-size: 0.8rem;
+  color: #b2b2b2;
+}
+
+.ai-empty {
+  color: #b3b3b3;
+  text-align: center;
+  margin-top: 40px;
+}
+
+.nemo-ai-composer {
+  border-top: 1px solid #2b2b2b;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
 .small { color: var(--muted); font-size: 0.95rem; }
 .hidden { display: none; }
 
@@ -265,6 +337,11 @@ input {
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 900px) {
+  .nemo-ai-shell { grid-template-columns: 1fr; }
+  .nemo-ai-sidebar { order: 2; }
 }
 
 @media (max-width: 700px) {

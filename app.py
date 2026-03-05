@@ -10,7 +10,7 @@ from pathlib import Path
 from urllib.parse import quote, urlparse
 
 import requests
-from flask import Flask, jsonify, render_template, request, session
+from flask import Flask, Response, jsonify, render_template, request, session
 from werkzeug.exceptions import HTTPException
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -131,6 +131,21 @@ def init_db():
         )
         """
     )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS ai_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            source TEXT,
+            metadata TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
     conn.commit()
 
     admin_pass = "gustavo270998"
@@ -171,6 +186,16 @@ def record_access(event_type, username=None, details=None):
             geo.get("longitude"),
             details,
         ),
+    )
+    conn.commit()
+    conn.close()
+
+
+def save_ai_message(username, role, content, source=None, metadata=None):
+    conn = db_conn()
+    conn.execute(
+        "INSERT INTO ai_messages (username, role, content, source, metadata) VALUES (?, ?, ?, ?, ?)",
+        (username, role, content[:5000], source, metadata),
     )
     conn.commit()
     conn.close()
@@ -375,12 +400,7 @@ def admin_audit():
     ).fetchall()
     conn.close()
 
-    return jsonify(
-        {
-            "count": len(rows),
-            "items": [dict(r) for r in rows],
-        }
-    )
+    return jsonify({"count": len(rows), "items": [dict(r) for r in rows]})
 
 
 @app.get("/api/admin/bans")
@@ -533,31 +553,34 @@ def geo_reverse():
     )
 
 
-@app.post("/api/ping")
-def ping_url():
+@app.get("/api/network/download-test")
+def network_download_test():
     _, err = require_auth()
     if err:
         return err
 
-    data = request.get_json(silent=True) or {}
-    target = normalize_url(data.get("url"))
-    if not target:
-        return jsonify({"error": "URL invalida"}), 400
+    try:
+        size_mb = int(request.args.get("size_mb", "5"))
+    except ValueError:
+        size_mb = 5
+    size_mb = max(1, min(20, size_mb))
 
-    measurements = []
-    for _ in range(3):
-        start = time.perf_counter()
-        try:
-            requests.get(target, timeout=8)
-            ms = (time.perf_counter() - start) * 1000
-            measurements.append(round(ms, 2))
-        except requests.RequestException:
-            measurements.append(None)
+    payload = b"0" * (size_mb * 1024 * 1024)
+    return Response(
+        payload,
+        mimetype="application/octet-stream",
+        headers={"Content-Length": str(len(payload)), "Cache-Control": "no-store"},
+    )
 
-    valid = [m for m in measurements if isinstance(m, (int, float))]
-    avg = round(sum(valid) / len(valid), 2) if valid else None
 
-    return jsonify({"target": target, "attempts_ms": measurements, "avg_ms": avg})
+@app.post("/api/network/upload-test")
+def network_upload_test():
+    _, err = require_auth()
+    if err:
+        return err
+
+    body = request.get_data(cache=False, as_text=False)
+    return jsonify({"bytes_received": len(body)})
 
 
 @app.get("/api/map/earthquakes")
@@ -835,9 +858,37 @@ def password_pwned_check():
     )
 
 
+@app.get("/api/ai/history")
+def ai_history():
+    user, err = require_auth()
+    if err:
+        return err
+
+    try:
+        limit = max(20, min(300, int(request.args.get("limit", "120"))))
+    except ValueError:
+        limit = 120
+
+    conn = db_conn()
+    rows = conn.execute(
+        """
+        SELECT id, role, content, source, metadata, created_at
+        FROM ai_messages
+        WHERE username = ?
+        ORDER BY id DESC
+        LIMIT ?
+        """,
+        (user, limit),
+    ).fetchall()
+    conn.close()
+
+    items = [dict(r) for r in reversed(rows)]
+    return jsonify({"count": len(items), "items": items})
+
+
 @app.post("/api/ai/ask")
 def ai_ask():
-    _, err = require_auth()
+    user, err = require_auth()
     if err:
         return err
 
@@ -846,23 +897,25 @@ def ai_ask():
     if len(question) < 3:
         return jsonify({"error": "Pergunta muito curta"}), 400
 
+    save_ai_message(user, "user", question)
+    record_access("ai_ask", user, question[:120])
+
     prompt = (
-        "Voce e um assistente de ciberseguranca. Responda em portugues, de forma objetiva e segura. "
+        "Voce e Nemo IA, assistente de ciberseguranca. Responda em portugues, objetivo, pratico e seguro. "
         "Pergunta: " + question
     )
 
-    # Primary free no-key LLM endpoint.
     try:
         url = f"https://text.pollinations.ai/{quote(prompt)}"
         r = requests.get(url, timeout=25)
         r.raise_for_status()
         answer = (r.text or "").strip()
         if answer:
+            save_ai_message(user, "assistant", answer[:3500], "Pollinations AI", "web_lookup")
             return jsonify({"answer": answer[:3500], "source": "Pollinations AI"})
     except requests.RequestException:
         pass
 
-    # Fallback if AI provider is unavailable.
     ddg = requests.get(
         "https://api.duckduckgo.com/",
         params={"q": question, "format": "json", "no_html": 1, "no_redirect": 1},
@@ -872,7 +925,8 @@ def ai_ask():
     j = ddg.json()
 
     fallback = j.get("AbstractText") or j.get("Answer") or "Nao consegui gerar resposta no momento."
-    return jsonify({"answer": fallback, "source": "DuckDuckGo Instant Answer fallback"})
+    save_ai_message(user, "assistant", fallback[:3500], "DuckDuckGo fallback", "web_lookup")
+    return jsonify({"answer": fallback, "source": "DuckDuckGo fallback"})
 
 
 @app.errorhandler(requests.RequestException)

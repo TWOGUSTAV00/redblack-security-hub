@@ -20,7 +20,7 @@
   <header class="topbar">
     <div>
       <h1>RedBlack Security Hub</h1>
-      <p class="subtitle">Admin audit, banimento, threat intel, vulns e IA assistente</p>
+      <p class="subtitle">Admin audit, banimento, threat intel, vulnerabilidades e Nemo IA</p>
     </div>
     <div class="hacker-corner" aria-hidden="true">
       <div class="hacker">
@@ -75,7 +75,7 @@
         <button class="topic-btn" data-topic="geo">Geo & Mapa</button>
         <button class="topic-btn" data-topic="intel">Threat Intel</button>
         <button class="topic-btn" data-topic="vuln">Vulnerabilidades</button>
-        <button class="topic-btn" data-topic="ai">IA Assistente</button>
+        <button class="topic-btn" data-topic="ai">Nemo IA</button>
       </div>
 
       <section id="topic-admin" class="topic-panel active">
@@ -124,7 +124,7 @@
       </section>
 
       <section id="topic-geo" class="topic-panel">
-        <h3 class="topic-title">Topico: Geolocalizacao e Mapa</h3>
+        <h3 class="topic-title">Topico: Geolocalizacao e Conexao Atual</h3>
         <div class="grid">
           <article class="card">
             <h3>Geolocalizacao por IP</h3>
@@ -135,11 +135,10 @@
           </article>
 
           <article class="card">
-            <h3>Latencia/Ping HTTP</h3>
-            <label for="ping-url">URL para teste</label>
-            <input id="ping-url" value="https://example.com" />
-            <button id="ping-btn" class="btn-danger" type="button">Testar latencia</button>
-            <pre id="ping-output" class="output"></pre>
+            <h3>Teste da sua conexao atual</h3>
+            <p class="small">Mede latencia atual com o servidor, velocidade de download e upload.</p>
+            <button id="conn-test-btn" class="btn-danger" type="button">Executar speed test</button>
+            <pre id="conn-output" class="output"></pre>
           </article>
 
           <article class="card full">
@@ -217,16 +216,24 @@
       </section>
 
       <section id="topic-ai" class="topic-panel">
-        <h3 class="topic-title">Topico: IA Assistente de Seguranca</h3>
-        <div class="grid">
-          <article class="card full">
-            <h3>Pergunte para a IA</h3>
-            <label for="ai-question">Pergunta</label>
-            <input id="ai-question" placeholder="Ex.: como endurecer meu servidor Linux?" />
-            <button id="ai-ask-btn" class="btn-danger" type="button">Perguntar</button>
-            <pre id="ai-output" class="output"></pre>
-          </article>
-        </div>
+        <h3 class="topic-title">Topico: Nemo IA</h3>
+        <section class="nemo-ai-shell">
+          <aside class="nemo-ai-sidebar">
+            <h3>Nemo IA</h3>
+            <p class="small">Historico salvo de perguntas, respostas e pesquisas.</p>
+            <button id="ai-refresh-btn" class="btn-outline" type="button">Atualizar historico</button>
+            <div id="ai-history-list" class="ai-history-list"></div>
+          </aside>
+
+          <div class="nemo-ai-main">
+            <div class="nemo-ai-head">Que bom te ver. Pergunte qualquer coisa para o Nemo IA.</div>
+            <div id="ai-chat-stream" class="ai-chat-stream"></div>
+            <div class="nemo-ai-composer">
+              <input id="ai-question" placeholder="Pergunte alguma coisa" />
+              <button id="ai-ask-btn" class="btn-danger" type="button">Enviar</button>
+            </div>
+          </div>
+        </section>
       </section>
     </section>
   </main>
