@@ -1,0 +1,272 @@
+﻿:root {
+  --bg: #070707;
+  --panel: #111;
+  --panel-soft: #161616;
+  --red: #d90429;
+  --red-soft: #9d0208;
+  --text: #f5f5f5;
+  --muted: #b8b8b8;
+  --ok: #31c48d;
+  --warn: #ffd166;
+  --danger: #ff595e;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--text);
+  font-family: "Rajdhani", sans-serif;
+  background:
+    radial-gradient(circle at 15% 10%, rgba(217, 4, 41, 0.2), transparent 30%),
+    radial-gradient(circle at 85% 80%, rgba(217, 4, 41, 0.15), transparent 25%),
+    linear-gradient(140deg, #040404 0%, #0d0d0d 45%, #050505 100%);
+}
+
+.scanline {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.02),
+    rgba(255, 255, 255, 0.02) 1px,
+    transparent 2px,
+    transparent 4px
+  );
+  opacity: 0.25;
+}
+
+.topbar {
+  padding: 24px 20px 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+h1, h2, h3 {
+  margin: 0 0 6px;
+  font-family: "Share Tech Mono", monospace;
+  letter-spacing: 0.8px;
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--muted);
+}
+
+.hacker-corner {
+  min-width: 130px;
+  display: grid;
+  place-items: center;
+}
+
+.hacker {
+  width: 112px;
+  height: 112px;
+  position: relative;
+  animation: floaty 2.8s ease-in-out infinite;
+}
+
+.head {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #f1d6c0;
+  position: absolute;
+  top: 18px;
+  left: 42px;
+  z-index: 3;
+}
+
+.hood {
+  width: 50px;
+  height: 46px;
+  border-radius: 40% 40% 28% 28%;
+  background: #181818;
+  border: 1px solid #2d2d2d;
+  position: absolute;
+  top: 10px;
+  left: 31px;
+  z-index: 2;
+}
+
+.body {
+  width: 68px;
+  height: 36px;
+  border-radius: 14px;
+  background: #1b1b1b;
+  border: 1px solid #2d2d2d;
+  position: absolute;
+  top: 45px;
+  left: 22px;
+}
+
+.laptop {
+  width: 82px;
+  height: 48px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #270005, #53000c);
+  border: 1px solid #9d0208;
+  position: absolute;
+  top: 58px;
+  left: 14px;
+  box-shadow: 0 0 14px rgba(217, 4, 41, 0.5);
+}
+
+main {
+  width: min(1180px, 92vw);
+  margin: 0 auto 40px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.card {
+  background: linear-gradient(170deg, var(--panel-soft), var(--panel));
+  border: 1px solid #2f2f2f;
+  border-left: 3px solid var(--red);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.28);
+}
+
+.full {
+  grid-column: 1 / -1;
+}
+
+.auth-card {
+  max-width: 500px;
+  margin: 12px auto;
+}
+
+.auth-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.tab {
+  border: 1px solid #333;
+  background: #121212;
+  color: var(--text);
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.tab.active {
+  border-color: var(--red);
+  box-shadow: 0 0 0 1px var(--red) inset;
+}
+
+label {
+  display: block;
+  margin: 8px 0 4px;
+  color: #dedede;
+}
+
+input {
+  width: 100%;
+  background: #0b0b0b;
+  color: var(--text);
+  border: 1px solid #383838;
+  border-radius: 8px;
+  padding: 10px;
+  font-family: inherit;
+}
+
+.btn-danger,
+.btn-outline {
+  margin-top: 10px;
+  border-radius: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  font-family: "Share Tech Mono", monospace;
+}
+
+.btn-danger {
+  background: linear-gradient(160deg, #d90429, #9d0208);
+  color: white;
+  border: 1px solid #fa2d4d;
+}
+
+.btn-outline {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid #5b5b5b;
+}
+
+.message {
+  min-height: 20px;
+  margin-top: 10px;
+  color: var(--warn);
+}
+
+.actions-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 8px 0 14px;
+  gap: 12px;
+}
+
+.output {
+  min-height: 86px;
+  background: #090909;
+  border: 1px solid #282828;
+  border-radius: 8px;
+  padding: 10px;
+  color: #e2e2e2;
+  white-space: pre-wrap;
+  font-family: "Share Tech Mono", monospace;
+}
+
+#map {
+  width: 100%;
+  height: 380px;
+  border-radius: 10px;
+  border: 1px solid #2d2d2d;
+}
+
+.small {
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.hidden {
+  display: none;
+}
+
+@keyframes floaty {
+  0% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+  100% { transform: translateY(0); }
+}
+
+@media (max-width: 700px) {
+  .topbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .hacker-corner {
+    align-self: flex-end;
+  }
+
+  .actions-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  #map {
+    height: 300px;
+  }
+}

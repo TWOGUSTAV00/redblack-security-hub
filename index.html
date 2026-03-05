@@ -1,0 +1,113 @@
+﻿<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RedBlack Security Hub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@500;700&display=swap" rel="stylesheet">
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="scanline"></div>
+  <header class="topbar">
+    <div>
+      <h1>RedBlack Security Hub</h1>
+      <p class="subtitle">Geolocalização, latência, mapa global e análise de segurança sem API key</p>
+    </div>
+    <div class="hacker-corner" aria-hidden="true">
+      <div class="hacker">
+        <div class="head"></div>
+        <div class="hood"></div>
+        <div class="body"></div>
+        <div class="laptop"></div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section id="auth-card" class="card auth-card">
+      <h2>Acesso</h2>
+      <p class="small">Cadastro local para demonstração (dados salvos no navegador).</p>
+      <div class="auth-tabs">
+        <button id="btn-login-tab" class="tab active">Login</button>
+        <button id="btn-register-tab" class="tab">Registrar</button>
+      </div>
+
+      <form id="login-form">
+        <label for="login-user">Usuário</label>
+        <input id="login-user" required minlength="3" />
+        <label for="login-pass">Senha</label>
+        <input id="login-pass" type="password" required minlength="4" />
+        <button type="submit" class="btn-danger">Entrar</button>
+      </form>
+
+      <form id="register-form" class="hidden">
+        <label for="reg-user">Novo usuário</label>
+        <input id="reg-user" required minlength="3" />
+        <label for="reg-pass">Nova senha</label>
+        <input id="reg-pass" type="password" required minlength="4" />
+        <button type="submit" class="btn-danger">Criar conta</button>
+      </form>
+      <p id="auth-message" class="message"></p>
+    </section>
+
+    <section id="dashboard" class="hidden">
+      <div class="actions-row">
+        <h2>Painel</h2>
+        <div>
+          <span id="welcome-user"></span>
+          <button id="logout-btn" class="btn-outline">Sair</button>
+        </div>
+      </div>
+
+      <div class="grid">
+        <article class="card">
+          <h3>1) Geolocalização por IP</h3>
+          <button id="geo-btn" class="btn-danger">Consultar localização</button>
+          <pre id="geo-output" class="output"></pre>
+          <p class="small">Fonte: ipapi.co (sem chave).</p>
+        </article>
+
+        <article class="card">
+          <h3>2) Medição de ping (latência HTTP)</h3>
+          <label for="ping-url">URL para teste</label>
+          <input id="ping-url" value="https://example.com" />
+          <button id="ping-btn" class="btn-danger">Testar latência</button>
+          <pre id="ping-output" class="output"></pre>
+          <p class="small">No navegador, o "ping" é aproximado via requisição HTTP.</p>
+        </article>
+
+        <article class="card full">
+          <h3>3) Mapa global</h3>
+          <div id="map"></div>
+          <p class="small">Fonte do mapa: OpenStreetMap + Leaflet.</p>
+        </article>
+
+        <article class="card full">
+          <h3>4) Verificação básica de vulnerabilidade (headers e nota)</h3>
+          <label for="target-host">Domínio alvo (ex.: example.com)</label>
+          <input id="target-host" placeholder="example.com" />
+          <button id="vuln-btn" class="btn-danger">Analisar domínio</button>
+          <pre id="vuln-output" class="output"></pre>
+          <p class="small">Fonte: Mozilla HTTP Observatory API (sem chave). Use somente domínios autorizados.</p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+  ></script>
+  <script src="./app.js"></script>
+</body>
+</html>
