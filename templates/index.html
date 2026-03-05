@@ -186,28 +186,34 @@
         <h3 class="topic-title">Topico: Nemo IA</h3>
         <section class="nemo-ai-shell">
           <aside class="nemo-ai-sidebar">
-            <h3>Nemo IA</h3>
-            <p class="small">Historico salvo apenas do que o usuario realmente pesquisar.</p>
-            <button id="ai-refresh-btn" class="btn-outline" type="button">Atualizar historico</button>
-            <button id="ai-clear-btn" class="btn-outline" type="button">Excluir todo historico</button>
-            <div id="ai-history-list" class="ai-history-list"></div>
+            <h3>Seus Chats</h3>
+            <button id="ai-new-chat-btn" class="btn-danger" type="button">Novo Chat</button>
+            <button id="ai-refresh-btn" class="btn-outline" type="button">Atualizar chats</button>
+            <button id="ai-clear-btn" class="btn-outline" type="button">Excluir chat atual</button>
+            <div id="ai-conversations" class="ai-history-list"></div>
           </aside>
           <div class="nemo-ai-main">
-            <div class="nemo-ai-head">Nemo IA: perguntas tecnicas, codigo e solucoes complexas.</div>
+            <div class="nemo-ai-head">Nemo IA: respostas tecnicas, codigo, imagem e contexto atual.</div>
             <div id="ai-chat-stream" class="ai-chat-stream"></div>
             <div class="nemo-ai-composer">
               <input id="ai-question" placeholder="Pergunte alguma coisa" />
+              <input id="ai-image" type="file" accept="image/*" />
               <button id="ai-ask-btn" class="btn-danger" type="button">Enviar</button>
             </div>
           </div>
         </section>
       </section>
     </section>
+    </section>
   </main>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>
+
+
+
 
 

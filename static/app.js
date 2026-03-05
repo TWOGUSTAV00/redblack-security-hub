@@ -144,18 +144,48 @@ async function refreshAudit() {
   }
 }
 
-function renderAiHistory(items) {
-  const historyList = document.getElementById("ai-history-list");
-  const stream = document.getElementById("ai-chat-stream");
-  if (!historyList || !stream) return;
+function renderConversations(items) {
+  const list = document.getElementById("ai-conversations");
+  if (!list) return;
 
-  const userQuestions = items.filter((m) => m.role === "user").slice(-30).reverse();
-  historyList.innerHTML = userQuestions
-    .map((m) => `<div class="ai-history-item">Pergunta em ${escapeHtml((m.created_at || "").replace("T", " "))}</div>`)
+  list.innerHTML = items
+    .map((c) => {
+      const active = Number(c.id) === Number(currentConversationId) ? " active" : "";
+      const title = escapeHtml(c.title || "Novo Chat");
+      const preview = escapeHtml((c.last_message || "").slice(0, 55));
+      return `<button class="ai-history-item${active}" data-conv-id="${c.id}" type="button"><strong>${title}</strong><br/><span>${preview}</span></button>`;
+    })
     .join("");
 
+  list.querySelectorAll("[data-conv-id]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      currentConversationId = Number(btn.dataset.convId);
+      await loadConversations();
+      await loadAiHistory();
+    });
+  });
+}
+
+async function loadConversations() {
+  const data = await api("/api/ai/conversations", { method: "GET", headers: {} });
+  const items = data.items || [];
+  if (!currentConversationId && items.length) currentConversationId = items[0].id;
+  renderConversations(items);
+}
+
+async function createNewChat() {
+  const data = await api("/api/ai/conversations", { method: "POST", body: JSON.stringify({ title: "Novo Chat" }) });
+  currentConversationId = data.conversation_id;
+  await loadConversations();
+  await loadAiHistory();
+}
+
+function renderAiHistory(items) {
+  const stream = document.getElementById("ai-chat-stream");
+  if (!stream) return;
+
   if (!items.length) {
-    stream.innerHTML = '<div class="ai-empty">Sem perguntas ainda. O historico so aparece depois da sua pesquisa.</div>';
+    stream.innerHTML = '<div class="ai-empty">Chat vazio. Faça sua primeira pergunta.</div>';
     return;
   }
 
@@ -185,40 +215,56 @@ function renderAiHistory(items) {
 }
 
 async function loadAiHistory() {
+  const stream = document.getElementById("ai-chat-stream");
+  if (!currentConversationId) {
+    stream.innerHTML = '<div class="ai-empty">Clique em Novo Chat para começar.</div>';
+    return;
+  }
+
   try {
-    const data = await api("/api/ai/history?limit=160", { method: "GET", headers: {} });
+    const data = await api(`/api/ai/history?conversation_id=${encodeURIComponent(currentConversationId)}&limit=200`, {
+      method: "GET",
+      headers: {},
+    });
     renderAiHistory(data.items || []);
   } catch (err) {
-    const stream = document.getElementById("ai-chat-stream");
     if (stream) stream.innerHTML = `<div class="ai-empty">Erro ao carregar historico: ${escapeHtml(err.message)}</div>`;
   }
 }
 
 async function deleteAiMessage(id) {
   if (!id) return;
-  try {
-    await api(`/api/ai/history/${encodeURIComponent(id)}`, { method: "DELETE", headers: {} });
-    await loadAiHistory();
-  } catch (err) {
-    const stream = document.getElementById("ai-chat-stream");
-    if (stream) stream.innerHTML += `<div class="ai-empty">Erro ao excluir: ${escapeHtml(err.message)}</div>`;
-  }
+  await api(`/api/ai/history/${encodeURIComponent(id)}`, { method: "DELETE", headers: {} });
+  await loadAiHistory();
 }
 
 async function clearAiHistory() {
-  try {
-    await api("/api/ai/history", { method: "DELETE", headers: {} });
-    await loadAiHistory();
-  } catch (err) {
-    const stream = document.getElementById("ai-chat-stream");
-    if (stream) stream.innerHTML += `<div class="ai-empty">Erro ao limpar historico: ${escapeHtml(err.message)}</div>`;
-  }
+  if (!currentConversationId) return;
+  await api("/api/ai/history", {
+    method: "DELETE",
+    body: JSON.stringify({ conversation_id: currentConversationId }),
+  });
+  await loadAiHistory();
+}
+
+async function extractImageText(file) {
+  if (!file) return "";
+  if (!window.Tesseract) return "";
+  const r = await Tesseract.recognize(file, "por+eng", {
+    logger: () => {},
+  });
+  return (r?.data?.text || "").trim();
 }
 
 async function onAiAsk() {
   const input = document.getElementById("ai-question");
+  const imageInput = document.getElementById("ai-image");
   const question = input.value.trim();
   if (!question) return;
+
+  if (!currentConversationId) {
+    await createNewChat();
+  }
 
   input.value = "";
   const stream = document.getElementById("ai-chat-stream");
@@ -231,10 +277,24 @@ async function onAiAsk() {
   }
 
   try {
-    await api("/api/ai/ask", {
+    let imageText = "";
+    const file = imageInput?.files?.[0];
+    if (file) {
+      imageText = await extractImageText(file);
+      imageInput.value = "";
+    }
+
+    const data = await api("/api/ai/ask", {
       method: "POST",
-      body: JSON.stringify({ question }),
+      body: JSON.stringify({
+        question,
+        conversation_id: currentConversationId,
+        image_text: imageText,
+      }),
     });
+
+    currentConversationId = data.conversation_id || currentConversationId;
+    await loadConversations();
     await loadAiHistory();
   } catch (err) {
     if (stream) {
@@ -549,6 +609,10 @@ function boot() {
 }
 
 document.addEventListener("DOMContentLoaded", boot);
+
+
+
+
 
 
 

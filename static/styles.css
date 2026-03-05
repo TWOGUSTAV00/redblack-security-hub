@@ -315,7 +315,7 @@ input {
   border-top: 1px solid #2b2b2b;
   padding: 12px;
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: 1fr auto auto;
   gap: 8px;
 }
 
@@ -360,4 +360,14 @@ input {
   padding: 6px 8px;
   cursor: pointer;
   font-size: 0.82rem;
+}
+
+.ai-history-item.active {
+  border-color: #d90429;
+  box-shadow: 0 0 0 1px #d90429 inset;
+}
+
+.ai-history-item span {
+  color: #b8b8b8;
+  font-size: 0.78rem;
 }

@@ -134,9 +134,22 @@ def init_db():
 
     conn.execute(
         """
+        CREATE TABLE IF NOT EXISTS ai_conversations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            title TEXT NOT NULL DEFAULT 'Novo Chat',
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS ai_messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT NOT NULL,
+            conversation_id INTEGER,
             role TEXT NOT NULL,
             content TEXT NOT NULL,
             source TEXT,
@@ -145,6 +158,10 @@ def init_db():
         )
         """
     )
+
+    cols_ai = {row["name"] for row in conn.execute("PRAGMA table_info(ai_messages)").fetchall()}
+    if "conversation_id" not in cols_ai:
+        conn.execute("ALTER TABLE ai_messages ADD COLUMN conversation_id INTEGER")
 
     conn.execute(
         """
@@ -200,14 +217,50 @@ def record_access(event_type, username=None, details=None):
     conn.close()
 
 
-def save_ai_message(username, role, content, source=None, metadata=None):
+def save_ai_message(username, conversation_id, role, content, source=None, metadata=None):
     conn = db_conn()
     conn.execute(
-        "INSERT INTO ai_messages (username, role, content, source, metadata) VALUES (?, ?, ?, ?, ?)",
-        (username, role, content[:5000], source, metadata),
+        "INSERT INTO ai_messages (username, conversation_id, role, content, source, metadata) VALUES (?, ?, ?, ?, ?, ?)",
+        (username, conversation_id, role, content[:5000], source, metadata),
+    )
+    conn.execute(
+        "UPDATE ai_conversations SET updated_at=CURRENT_TIMESTAMP WHERE id=? AND username=?",
+        (conversation_id, username),
     )
     conn.commit()
     conn.close()
+
+
+def create_ai_conversation(username, title="Novo Chat"):
+    conn = db_conn()
+    cur = conn.execute(
+        "INSERT INTO ai_conversations (username, title) VALUES (?, ?)",
+        (username, (title or "Novo Chat")[:120]),
+    )
+    conv_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return conv_id
+
+
+def conversation_exists(username, conversation_id):
+    conn = db_conn()
+    row = conn.execute(
+        "SELECT id FROM ai_conversations WHERE id=? AND username=?",
+        (conversation_id, username),
+    ).fetchone()
+    conn.close()
+    return bool(row)
+
+
+def get_latest_conversation_id(username):
+    conn = db_conn()
+    row = conn.execute(
+        "SELECT id FROM ai_conversations WHERE username=? ORDER BY updated_at DESC, id DESC LIMIT 1",
+        (username,),
+    ).fetchone()
+    conn.close()
+    return row["id"] if row else None
 
 
 def set_user_active(username):
@@ -910,6 +963,41 @@ def password_pwned_check():
     )
 
 
+@app.get("/api/ai/conversations")
+def ai_conversations_list():
+    user, err = require_auth()
+    if err:
+        return err
+
+    conn = db_conn()
+    rows = conn.execute(
+        """
+        SELECT c.id, c.title, c.created_at, c.updated_at,
+               (SELECT content FROM ai_messages m WHERE m.conversation_id=c.id ORDER BY m.id DESC LIMIT 1) AS last_message
+        FROM ai_conversations c
+        WHERE c.username=?
+        ORDER BY c.updated_at DESC, c.id DESC
+        """,
+        (user,),
+    ).fetchall()
+    conn.close()
+
+    items = [dict(r) for r in rows]
+    return jsonify({"count": len(items), "items": items})
+
+
+@app.post("/api/ai/conversations")
+def ai_conversation_create():
+    user, err = require_auth()
+    if err:
+        return err
+
+    data = request.get_json(silent=True) or {}
+    title = (data.get("title") or "Novo Chat").strip()[:120] or "Novo Chat"
+    cid = create_ai_conversation(user, title)
+    return jsonify({"ok": True, "conversation_id": cid})
+
+
 @app.get("/api/ai/history")
 def ai_history():
     user, err = require_auth()
@@ -921,22 +1009,37 @@ def ai_history():
     except ValueError:
         limit = 120
 
+    conv_raw = request.args.get("conversation_id")
+    conversation_id = None
+    if conv_raw:
+        try:
+            conversation_id = int(conv_raw)
+        except ValueError:
+            return jsonify({"error": "conversation_id invalido"}), 400
+    else:
+        conversation_id = get_latest_conversation_id(user)
+
+    if not conversation_id:
+        return jsonify({"count": 0, "items": [], "conversation_id": None})
+
+    if not conversation_exists(user, conversation_id):
+        return jsonify({"error": "Conversa nao encontrada"}), 404
+
     conn = db_conn()
     rows = conn.execute(
         """
         SELECT id, role, content, source, metadata, created_at
         FROM ai_messages
-        WHERE username = ?
+        WHERE username = ? AND conversation_id = ?
         ORDER BY id DESC
         LIMIT ?
         """,
-        (user, limit),
+        (user, conversation_id, limit),
     ).fetchall()
     conn.close()
 
     items = [dict(r) for r in reversed(rows)]
-    return jsonify({"count": len(items), "items": items})
-
+    return jsonify({"count": len(items), "items": items, "conversation_id": conversation_id})
 
 
 @app.delete("/api/ai/history")
@@ -945,8 +1048,21 @@ def ai_history_clear():
     if err:
         return err
 
+    data = request.get_json(silent=True) or {}
+    conv_raw = data.get("conversation_id")
+    if conv_raw is None:
+        return jsonify({"error": "conversation_id obrigatorio"}), 400
+
+    try:
+        conversation_id = int(conv_raw)
+    except (TypeError, ValueError):
+        return jsonify({"error": "conversation_id invalido"}), 400
+
+    if not conversation_exists(user, conversation_id):
+        return jsonify({"error": "Conversa nao encontrada"}), 404
+
     conn = db_conn()
-    conn.execute("DELETE FROM ai_messages WHERE username = ?", (user,))
+    conn.execute("DELETE FROM ai_messages WHERE username = ? AND conversation_id = ?", (user, conversation_id))
     conn.commit()
     conn.close()
     return jsonify({"ok": True})
@@ -963,6 +1079,8 @@ def ai_history_delete_one(message_id):
     conn.commit()
     conn.close()
     return jsonify({"ok": True})
+
+
 @app.post("/api/ai/ask")
 def ai_ask():
     user, err = require_auth()
@@ -974,37 +1092,69 @@ def ai_ask():
     if len(question) < 3:
         return jsonify({"error": "Pergunta muito curta"}), 400
 
-    save_ai_message(user, "user", question)
+    conv_raw = data.get("conversation_id")
+    conversation_id = None
+    if conv_raw is not None:
+        try:
+            conversation_id = int(conv_raw)
+        except (TypeError, ValueError):
+            return jsonify({"error": "conversation_id invalido"}), 400
+        if not conversation_exists(user, conversation_id):
+            return jsonify({"error": "Conversa nao encontrada"}), 404
+    else:
+        conversation_id = create_ai_conversation(user, question[:48])
+
+    image_text = (data.get("image_text") or "").strip()
+    composed_question = question
+    if image_text:
+        composed_question = f"Pergunta do usuario: {question}\n\nTexto extraido da imagem:\n{image_text[:6000]}"
+
+    save_ai_message(user, conversation_id, "user", question)
     record_access("ai_ask", user, question[:120])
 
+    web_bits = []
+    try:
+        ddg_ctx = requests.get(
+            "https://api.duckduckgo.com/",
+            params={"q": question, "format": "json", "no_html": 1, "no_redirect": 1},
+            timeout=8,
+        )
+        ddg_ctx.raise_for_status()
+        j = ddg_ctx.json()
+        if j.get("AbstractText"):
+            web_bits.append("Resumo web: " + j.get("AbstractText"))
+        topics = (j.get("RelatedTopics") or [])[:3]
+        for t in topics:
+            txt = t.get("Text") if isinstance(t, dict) else None
+            if txt:
+                web_bits.append("Topico relacionado: " + txt)
+    except requests.RequestException:
+        pass
+
+    context_web = "\n".join(web_bits) if web_bits else "Sem contexto web adicional."
+
     prompt = (
-        "Voce e Nemo IA, assistente tecnico. Responda em portugues, rapido e direto. "
-        "Quando a pergunta for avancada, entregue codigo, arquitetura e exemplos praticos. "
-        "Pergunta: " + question
+        "Voce e Nemo IA. Responda em portugues, com alta precisao tecnica, de forma direta. "
+        "Para temas complexos, entregue explicacao + codigo completo quando fizer sentido. "
+        "Nao copie textos protegidos. Crie resposta original.\n"
+        f"Contexto web atual:\n{context_web}\n\n"
+        f"Pergunta:\n{composed_question}"
     )
 
     try:
         url = f"https://text.pollinations.ai/{quote(prompt)}"
-        r = requests.get(url, timeout=12)
+        r = requests.get(url, timeout=10)
         r.raise_for_status()
         answer = (r.text or "").strip()
         if answer:
-            save_ai_message(user, "assistant", answer[:3500], "Pollinations AI", "web_lookup")
-            return jsonify({"answer": answer[:3500], "source": "Pollinations AI"})
+            save_ai_message(user, conversation_id, "assistant", answer[:3500], "Pollinations AI", "web_lookup")
+            return jsonify({"answer": answer[:3500], "source": "Pollinations AI", "conversation_id": conversation_id})
     except requests.RequestException:
         pass
 
-    ddg = requests.get(
-        "https://api.duckduckgo.com/",
-        params={"q": question, "format": "json", "no_html": 1, "no_redirect": 1},
-        timeout=10,
-    )
-    ddg.raise_for_status()
-    j = ddg.json()
-
-    fallback = j.get("AbstractText") or j.get("Answer") or "Nao consegui gerar resposta no momento."
-    save_ai_message(user, "assistant", fallback[:3500], "DuckDuckGo fallback", "web_lookup")
-    return jsonify({"answer": fallback, "source": "DuckDuckGo fallback"})
+    fallback = "Nao consegui gerar resposta no momento. Tente reformular sua pergunta."
+    save_ai_message(user, conversation_id, "assistant", fallback, "Fallback", "none")
+    return jsonify({"answer": fallback, "source": "Fallback", "conversation_id": conversation_id})
 
 
 @app.errorhandler(requests.RequestException)
@@ -1024,4 +1174,7 @@ if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=False)
 else:
     init_db()
+
+
+
 
