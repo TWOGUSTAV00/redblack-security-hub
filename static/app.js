@@ -3,6 +3,8 @@ let geoMarker;
 let quakeLayer;
 let isAdmin = false;
 let heartbeatTimer = null;
+let currentConversationId = null;
+let aiBusy = false;
 
 function output(id, value) {
   const el = document.getElementById(id);
@@ -17,6 +19,11 @@ function escapeHtml(text) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function setAiStatus(msg) {
+  const el = document.getElementById("ai-status");
+  if (el) el.textContent = msg || "";
 }
 
 async function api(path, options = {}) {
@@ -64,10 +71,7 @@ function setTopic(name) {
   document.querySelectorAll(".topic-panel").forEach((panel) => {
     panel.classList.toggle("active", panel.id === `topic-${name}`);
   });
-
-  if (name === "geo" && map) {
-    setTimeout(() => map.invalidateSize(), 60);
-  }
+  if (name === "geo" && map) setTimeout(() => map.invalidateSize(), 60);
 }
 
 async function startHeartbeat() {
@@ -90,19 +94,14 @@ async function requestBrowserLocation() {
     async (pos) => {
       const lat = pos.coords.latitude;
       const lon = pos.coords.longitude;
-
       if (map) {
         const point = [lat, lon];
         map.setView(point, 6);
         if (geoMarker) geoMarker.remove();
         geoMarker = L.marker(point).addTo(map).bindPopup("Sua localizacao").openPopup();
       }
-
       try {
-        const rev = await api(`/api/geo/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`, {
-          method: "GET",
-          headers: {},
-        });
+        const rev = await api(`/api/geo/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`, { method: "GET", headers: {} });
         statusEl.textContent = `Localizacao ativa: ${rev.city || "-"}, ${rev.state || "-"}, ${rev.country || "-"}`;
       } catch {
         statusEl.textContent = "Localizacao concedida, sem reverse geocoding disponivel.";
@@ -127,7 +126,6 @@ async function refreshAudit() {
   output("online-output", "Carregando online...");
   try {
     const data = await api(`/api/admin/audit?limit=${encodeURIComponent(limit)}`, { method: "GET", headers: {} });
-
     const concise = (data.items || []).map((r) => ({
       evento: r.event_type,
       usuario: r.username,
@@ -135,7 +133,6 @@ async function refreshAudit() {
       local: [r.city, r.region, r.country].filter(Boolean).join(" / "),
       horario: r.created_at,
     }));
-
     output("audit-output", concise);
     output("online-output", (data.online_users || []).map((u) => ({ usuario: u.username, ultimo_ping: u.last_seen })));
   } catch (err) {
@@ -174,7 +171,10 @@ async function loadConversations() {
 }
 
 async function createNewChat() {
-  const data = await api("/api/ai/conversations", { method: "POST", body: JSON.stringify({ title: "Novo Chat" }) });
+  const data = await api("/api/ai/conversations", {
+    method: "POST",
+    body: JSON.stringify({ title: "Novo Chat" }),
+  });
   currentConversationId = data.conversation_id;
   await loadConversations();
   await loadAiHistory();
@@ -247,43 +247,49 @@ async function clearAiHistory() {
   await loadAiHistory();
 }
 
-async function extractImageText(file) {
-  if (!file) return "";
-  if (!window.Tesseract) return "";
-  const r = await Tesseract.recognize(file, "por+eng", {
-    logger: () => {},
-  });
-  return (r?.data?.text || "").trim();
+function ocrWithTimeout(file, timeoutMs = 12000) {
+  if (!file || !window.Tesseract) return Promise.resolve("");
+  const ocrPromise = Tesseract.recognize(file, "por+eng", { logger: () => {} })
+    .then((r) => (r?.data?.text || "").trim())
+    .catch(() => "");
+  const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(""), timeoutMs));
+  return Promise.race([ocrPromise, timeoutPromise]);
 }
 
 async function onAiAsk() {
+  if (aiBusy) return;
   const input = document.getElementById("ai-question");
   const imageInput = document.getElementById("ai-image");
-  const question = input.value.trim();
-  if (!question) return;
+  const askBtn = document.getElementById("ai-ask-btn");
+  const file = imageInput?.files?.[0] || null;
+  const questionRaw = input.value.trim();
 
-  if (!currentConversationId) {
-    await createNewChat();
-  }
-
-  input.value = "";
-  const stream = document.getElementById("ai-chat-stream");
-  if (stream) {
-    stream.innerHTML += `
-      <div class="ai-msg user"><div class="ai-role">Voce</div><div class="ai-content">${escapeHtml(question)}</div></div>
-      <div class="ai-msg assistant"><div class="ai-role">Nemo IA</div><div class="ai-content">Pensando...</div></div>
-    `;
-    stream.scrollTop = stream.scrollHeight;
-  }
+  if (!questionRaw && !file) return;
+  aiBusy = true;
+  if (askBtn) askBtn.disabled = true;
 
   try {
+    if (!currentConversationId) await createNewChat();
+    const question = questionRaw || "Explique e resolva com base na imagem enviada.";
+    input.value = "";
+
+    const stream = document.getElementById("ai-chat-stream");
+    if (stream) {
+      stream.innerHTML += `
+        <div class="ai-msg user"><div class="ai-role">Voce</div><div class="ai-content">${escapeHtml(question)}${file ? "\n[Imagem anexada]" : ""}</div></div>
+        <div class="ai-msg assistant"><div class="ai-role">Nemo IA</div><div class="ai-content">Pensando...</div></div>
+      `;
+      stream.scrollTop = stream.scrollHeight;
+    }
+
     let imageText = "";
-    const file = imageInput?.files?.[0];
     if (file) {
-      imageText = await extractImageText(file);
+      setAiStatus("Processando imagem...");
+      imageText = await ocrWithTimeout(file, 12000);
       imageInput.value = "";
     }
 
+    setAiStatus("Consultando Nemo IA...");
     const data = await api("/api/ai/ask", {
       method: "POST",
       body: JSON.stringify({
@@ -296,14 +302,19 @@ async function onAiAsk() {
     currentConversationId = data.conversation_id || currentConversationId;
     await loadConversations();
     await loadAiHistory();
+    setAiStatus("");
   } catch (err) {
+    setAiStatus("");
+    const stream = document.getElementById("ai-chat-stream");
     if (stream) {
       stream.innerHTML += `<div class="ai-empty">Erro: ${escapeHtml(err.message)}</div>`;
       stream.scrollTop = stream.scrollHeight;
     }
+  } finally {
+    aiBusy = false;
+    if (askBtn) askBtn.disabled = false;
   }
 }
-
 function showDashboard(user, adminFlag) {
   isAdmin = !!adminFlag;
   document.getElementById("auth-card").classList.add("hidden");
@@ -316,7 +327,7 @@ function showDashboard(user, adminFlag) {
   setTopic("admin");
 
   if (isAdmin) refreshAudit();
-  loadAiHistory();
+  loadConversations().then(loadAiHistory);
   startHeartbeat();
 }
 
@@ -387,7 +398,6 @@ async function onGeo() {
   try {
     const q = ip ? `?ip=${encodeURIComponent(ip)}` : "";
     const data = await api(`/api/geo/ip${q}`, { method: "GET", headers: {} });
-
     output("geo-output", {
       ip: data.ip,
       cidade: data.city,
@@ -410,7 +420,6 @@ async function onGeo() {
 
 async function onConnectionTest() {
   output("conn-output", "Executando speed test (latencia, download e upload)...");
-
   try {
     const pingSamples = [];
     for (let i = 0; i < 4; i += 1) {
@@ -596,10 +605,21 @@ function bindEvents() {
   document.getElementById("pwd-btn").addEventListener("click", onPwnedPassword);
 
   document.getElementById("ai-ask-btn").addEventListener("click", onAiAsk);
-  document.getElementById("ai-refresh-btn").addEventListener("click", loadAiHistory);
+  document.getElementById("ai-new-chat-btn").addEventListener("click", createNewChat);
+  document.getElementById("ai-refresh-btn").addEventListener("click", async () => {
+    await loadConversations();
+    await loadAiHistory();
+  });
   document.getElementById("ai-clear-btn").addEventListener("click", clearAiHistory);
   document.getElementById("ai-question").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") onAiAsk();
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      onAiAsk();
+    }
+  });
+  document.getElementById("ai-image").addEventListener("change", () => {
+    const file = document.getElementById("ai-image")?.files?.[0];
+    setAiStatus(file ? `Imagem pronta: ${file.name}` : "");
   });
 }
 
@@ -609,12 +629,5 @@ function boot() {
 }
 
 document.addEventListener("DOMContentLoaded", boot);
-
-
-
-
-
-
-
 
 
