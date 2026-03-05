@@ -20,7 +20,7 @@
   <header class="topbar">
     <div>
       <h1>RedBlack Security Hub</h1>
-      <p class="subtitle">Backend real + APIs sem key: geolocalização, latência, mapa global e teste de segurança</p>
+      <p class="subtitle">Painel cyber completo com APIs reais sem chave</p>
     </div>
     <div class="hacker-corner" aria-hidden="true">
       <div class="hacker">
@@ -35,7 +35,7 @@
   <main>
     <section id="auth-card" class="card auth-card">
       <h2>Acesso Seguro</h2>
-      <p class="small">Autenticação por backend com senha em hash. Admin atualizado: Nemo.</p>
+      <p class="small">Ao entrar no painel, o site pede localização para enriquecer os módulos.</p>
       <div class="auth-tabs">
         <button id="btn-login-tab" class="tab active" type="button">Login</button>
         <button id="btn-register-tab" class="tab" type="button">Registrar</button>
@@ -67,6 +67,7 @@
           <button id="logout-btn" class="btn-outline" type="button">Sair</button>
         </div>
       </div>
+      <p id="location-status" class="small"></p>
 
       <div class="grid">
         <article class="card">
@@ -75,32 +76,68 @@
           <input id="geo-ip" placeholder="Ex.: 8.8.8.8" />
           <button id="geo-btn" class="btn-danger" type="button">Consultar localização</button>
           <pre id="geo-output" class="output"></pre>
-          <p class="small">Fonte: ipwho.is</p>
         </article>
 
         <article class="card">
-          <h3>2) Medição de latência real</h3>
+          <h3>2) Latência/Ping HTTP</h3>
           <label for="ping-url">URL para teste</label>
           <input id="ping-url" value="https://example.com" />
           <button id="ping-btn" class="btn-danger" type="button">Testar latência</button>
           <pre id="ping-output" class="output"></pre>
-          <p class="small">Medição feita pelo backend (3 tentativas).</p>
         </article>
 
         <article class="card full">
-          <h3>3) Mapa global de eventos reais (terremotos 24h)</h3>
+          <h3>3) Mapa global + eventos reais (USGS 24h)</h3>
           <button id="map-feed-btn" class="btn-danger" type="button">Carregar eventos globais</button>
           <div id="map"></div>
-          <p class="small">Fonte: USGS GeoJSON + OpenStreetMap</p>
         </article>
 
-        <article class="card full">
-          <h3>4) Teste de vulnerabilidade real (sem key)</h3>
-          <label for="target-host">Domínio alvo (ex.: example.com)</label>
+        <article class="card">
+          <h3>4) Scan de domínio (Shodan InternetDB)</h3>
+          <label for="target-host">Domínio alvo</label>
           <input id="target-host" placeholder="example.com" />
           <button id="vuln-btn" class="btn-danger" type="button">Analisar domínio</button>
           <pre id="vuln-output" class="output"></pre>
-          <p class="small">Fonte: Shodan InternetDB API</p>
+        </article>
+
+        <article class="card">
+          <h3>5) Threat Intel de IP (OTX + Shodan)</h3>
+          <label for="intel-ip">IP alvo</label>
+          <input id="intel-ip" placeholder="8.8.8.8" />
+          <button id="intel-btn" class="btn-danger" type="button">Consultar inteligência</button>
+          <pre id="intel-output" class="output"></pre>
+        </article>
+
+        <article class="card">
+          <h3>6) Botnet/C2 feed (Abuse.ch Feodo)</h3>
+          <label for="feodo-ip">IP para checar na lista (opcional)</label>
+          <input id="feodo-ip" placeholder="1.2.3.4" />
+          <button id="feodo-btn" class="btn-danger" type="button">Consultar feed</button>
+          <pre id="feodo-output" class="output"></pre>
+        </article>
+
+        <article class="card">
+          <h3>7) Últimos CVEs publicados</h3>
+          <label for="cve-limit">Quantidade (1-30)</label>
+          <input id="cve-limit" value="8" />
+          <button id="cve-btn" class="btn-danger" type="button">Buscar CVEs</button>
+          <pre id="cve-output" class="output"></pre>
+        </article>
+
+        <article class="card">
+          <h3>8) Certificados do domínio (CT logs)</h3>
+          <label for="cert-domain">Domínio</label>
+          <input id="cert-domain" placeholder="example.com" />
+          <button id="cert-btn" class="btn-danger" type="button">Consultar crt.sh</button>
+          <pre id="cert-output" class="output"></pre>
+        </article>
+
+        <article class="card">
+          <h3>9) Senha vazada? (Pwned Passwords)</h3>
+          <label for="pwd-check">Senha para verificar</label>
+          <input id="pwd-check" type="password" placeholder="Digite para checagem" />
+          <button id="pwd-btn" class="btn-danger" type="button">Checar vazamento</button>
+          <pre id="pwd-output" class="output"></pre>
         </article>
       </div>
     </section>
@@ -114,5 +151,3 @@
   <script src="/static/app.js"></script>
 </body>
 </html>
-
-

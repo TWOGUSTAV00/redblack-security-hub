@@ -1,7 +1,9 @@
-﻿import os
+﻿import hashlib
+import ipaddress
+import os
 import re
-import sqlite3
 import socket
+import sqlite3
 import time
 from datetime import timedelta
 from pathlib import Path
@@ -58,6 +60,7 @@ def init_db():
             "INSERT INTO users (username, password_hash) VALUES (?, ?)",
             (admin_user, generate_password_hash(admin_pass)),
         )
+
     conn.commit()
     conn.close()
 
@@ -93,6 +96,18 @@ def normalize_url(url):
     return raw
 
 
+def valid_domain(host):
+    return bool(re.fullmatch(r"[a-z0-9.-]{3,255}", host or ""))
+
+
+def valid_ip(value):
+    try:
+        ipaddress.ip_address(value)
+        return True
+    except ValueError:
+        return False
+
+
 @app.after_request
 def secure_headers(resp):
     resp.headers["X-Content-Type-Options"] = "nosniff"
@@ -105,6 +120,11 @@ def secure_headers(resp):
 @app.get("/")
 def home():
     return render_template("index.html")
+
+
+@app.get("/health")
+def health():
+    return jsonify({"ok": True})
 
 
 @app.get("/api/auth/me")
@@ -203,6 +223,41 @@ def geo_ip():
     )
 
 
+@app.get("/api/geo/reverse")
+def geo_reverse():
+    _, err = require_auth()
+    if err:
+        return err
+
+    lat = (request.args.get("lat") or "").strip()
+    lon = (request.args.get("lon") or "").strip()
+    try:
+        lat_f = float(lat)
+        lon_f = float(lon)
+    except ValueError:
+        return jsonify({"error": "Latitude/longitude invalidas"}), 400
+
+    r = requests.get(
+        "https://nominatim.openstreetmap.org/reverse",
+        params={"format": "jsonv2", "lat": lat_f, "lon": lon_f},
+        headers={"User-Agent": "redblack-security-hub/1.0"},
+        timeout=12,
+    )
+    r.raise_for_status()
+    data = r.json()
+    addr = data.get("address", {})
+
+    return jsonify(
+        {
+            "display_name": data.get("display_name"),
+            "city": addr.get("city") or addr.get("town") or addr.get("village"),
+            "state": addr.get("state"),
+            "country": addr.get("country"),
+            "postcode": addr.get("postcode"),
+        }
+    )
+
+
 @app.post("/api/ping")
 def ping_url():
     _, err = require_auth()
@@ -242,7 +297,7 @@ def map_earthquakes():
     data = resp.json()
 
     points = []
-    for feature in data.get("features", [])[:120]:
+    for feature in data.get("features", [])[:160]:
         props = feature.get("properties", {})
         coords = feature.get("geometry", {}).get("coordinates", [None, None])
         if len(coords) < 2 or coords[0] is None or coords[1] is None:
@@ -268,7 +323,7 @@ def vuln_scan():
         return err
 
     host = (request.args.get("host") or "").strip().lower()
-    if not re.fullmatch(r"[a-z0-9.-]{3,255}", host):
+    if not valid_domain(host):
         return jsonify({"error": "Dominio invalido"}), 400
 
     try:
@@ -311,6 +366,179 @@ def vuln_scan():
     )
 
 
+@app.get("/api/intel/ip")
+def intel_ip():
+    _, err = require_auth()
+    if err:
+        return err
+
+    ip = (request.args.get("ip") or "").strip()
+    if not valid_ip(ip):
+        return jsonify({"error": "IP invalido"}), 400
+
+    shodan_resp = requests.get(f"https://internetdb.shodan.io/{ip}", timeout=12)
+    shodan_data = {}
+    if shodan_resp.status_code == 200:
+        shodan_data = shodan_resp.json()
+
+    otx_resp = requests.get(
+        f"https://otx.alienvault.com/api/v1/indicators/IPv4/{ip}/general", timeout=12
+    )
+    otx_resp.raise_for_status()
+    otx = otx_resp.json()
+
+    pulses = ((otx.get("pulse_info") or {}).get("pulses") or [])[:8]
+    pulse_names = [p.get("name") for p in pulses if p.get("name")]
+
+    return jsonify(
+        {
+            "ip": ip,
+            "reputation": otx.get("reputation"),
+            "country": (otx.get("country_name") or ""),
+            "asn": otx.get("asn"),
+            "malware_samples": len((otx.get("malware") or {}).get("data", [])),
+            "pulse_count": len((otx.get("pulse_info") or {}).get("pulses", [])),
+            "pulse_names": pulse_names,
+            "open_ports": shodan_data.get("ports", []),
+            "known_vulns": shodan_data.get("vulns", []),
+            "tags": shodan_data.get("tags", []),
+        }
+    )
+
+
+@app.get("/api/threats/feodo")
+def threats_feodo():
+    _, err = require_auth()
+    if err:
+        return err
+
+    ip = (request.args.get("ip") or "").strip()
+    if ip and not valid_ip(ip):
+        return jsonify({"error": "IP invalido"}), 400
+
+    r = requests.get(
+        "https://feodotracker.abuse.ch/downloads/ipblocklist_recommended.json", timeout=15
+    )
+    r.raise_for_status()
+    data = r.json()
+
+    if ip:
+        match = [x for x in data if x.get("ip_address") == ip]
+        return jsonify({"ip": ip, "listed": bool(match), "matches": match[:5]})
+
+    return jsonify({"total": len(data), "sample": data[:25]})
+
+
+@app.get("/api/cves/latest")
+def cves_latest():
+    _, err = require_auth()
+    if err:
+        return err
+
+    limit_raw = request.args.get("limit", "10")
+    try:
+        limit = max(1, min(30, int(limit_raw)))
+    except ValueError:
+        limit = 10
+
+    r = requests.get("https://cve.circl.lu/api/last", timeout=15)
+    r.raise_for_status()
+    items = r.json()
+
+    simplified = []
+    for item in items[:limit]:
+        md = item.get("cveMetadata", {})
+        cont = (item.get("containers") or {}).get("cna", {})
+        descs = cont.get("descriptions", [])
+        description = ""
+        if descs:
+            description = descs[0].get("value", "")
+        simplified.append(
+            {
+                "cve": md.get("cveId"),
+                "published": md.get("datePublished"),
+                "updated": md.get("dateUpdated"),
+                "title": cont.get("title"),
+                "description": description[:280],
+            }
+        )
+
+    return jsonify({"count": len(simplified), "items": simplified})
+
+
+@app.get("/api/domain/certs")
+def domain_certs():
+    _, err = require_auth()
+    if err:
+        return err
+
+    domain = (request.args.get("domain") or "").strip().lower()
+    if not valid_domain(domain):
+        return jsonify({"error": "Dominio invalido"}), 400
+
+    r = requests.get(f"https://crt.sh/?q={domain}&output=json", timeout=15)
+    r.raise_for_status()
+
+    try:
+        rows = r.json()
+    except ValueError:
+        return jsonify({"error": "Resposta invalida do crt.sh"}), 502
+
+    names = []
+    for row in rows[:200]:
+        val = row.get("common_name") or ""
+        if val and val not in names:
+            names.append(val)
+
+    return jsonify(
+        {
+            "domain": domain,
+            "cert_count": len(rows),
+            "common_names_sample": names[:30],
+        }
+    )
+
+
+@app.post("/api/password/pwned-check")
+def password_pwned_check():
+    _, err = require_auth()
+    if err:
+        return err
+
+    data = request.get_json(silent=True) or {}
+    password = data.get("password") or ""
+    if len(password) < 4:
+        return jsonify({"error": "Senha para analise muito curta"}), 400
+
+    sha1 = hashlib.sha1(password.encode("utf-8")).hexdigest().upper()
+    prefix = sha1[:5]
+    suffix = sha1[5:]
+
+    r = requests.get(f"https://api.pwnedpasswords.com/range/{prefix}", timeout=12)
+    r.raise_for_status()
+
+    found = 0
+    for line in r.text.splitlines():
+        parts = line.split(":")
+        if len(parts) != 2:
+            continue
+        if parts[0].strip().upper() == suffix:
+            try:
+                found = int(parts[1].strip())
+            except ValueError:
+                found = 0
+            break
+
+    return jsonify(
+        {
+            "pwned": found > 0,
+            "count": found,
+            "k_anonymity": True,
+            "source": "HaveIBeenPwned Pwned Passwords API",
+        }
+    )
+
+
 @app.errorhandler(requests.RequestException)
 def handle_request_error(err):
     return jsonify({"error": f"Falha na API externa: {err}"}), 502
@@ -328,9 +556,3 @@ if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=False)
 else:
     init_db()
-
-
-
-
-
-

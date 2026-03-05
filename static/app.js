@@ -1,6 +1,7 @@
 ﻿let map;
 let geoMarker;
 let quakeLayer;
+let userCoords = null;
 
 function output(id, value) {
   document.getElementById(id).textContent =
@@ -49,11 +50,52 @@ function initMap() {
   }).addTo(map);
 }
 
+async function requestBrowserLocation() {
+  const statusEl = document.getElementById("location-status");
+  if (!navigator.geolocation) {
+    statusEl.textContent = "Geolocalização não suportada neste navegador.";
+    return;
+  }
+
+  statusEl.textContent = "Solicitando sua localização para enriquecer os módulos...";
+
+  navigator.geolocation.getCurrentPosition(
+    async (pos) => {
+      userCoords = {
+        lat: pos.coords.latitude,
+        lon: pos.coords.longitude,
+      };
+
+      if (map) {
+        const point = [userCoords.lat, userCoords.lon];
+        map.setView(point, 6);
+        if (geoMarker) geoMarker.remove();
+        geoMarker = L.marker(point).addTo(map).bindPopup("Sua localização").openPopup();
+      }
+
+      try {
+        const rev = await api(`/api/geo/reverse?lat=${encodeURIComponent(userCoords.lat)}&lon=${encodeURIComponent(userCoords.lon)}`, {
+          method: "GET",
+          headers: {},
+        });
+        statusEl.textContent = `Localização ativa: ${rev.city || "-"}, ${rev.state || "-"}, ${rev.country || "-"}`;
+      } catch {
+        statusEl.textContent = "Localização concedida, mas não foi possível resolver endereço.";
+      }
+    },
+    (err) => {
+      statusEl.textContent = `Localização não concedida (${err.message}). Algumas funções ficam sem contexto local.`;
+    },
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
+}
+
 function showDashboard(user) {
   document.getElementById("auth-card").classList.add("hidden");
   document.getElementById("dashboard").classList.remove("hidden");
   document.getElementById("welcome-user").textContent = `Logado como: ${user}`;
   initMap();
+  requestBrowserLocation();
 }
 
 function showAuth() {
@@ -147,20 +189,20 @@ async function onPing() {
 }
 
 async function onMapFeed() {
-  output("vuln-output", "");
   try {
     const data = await api("/api/map/earthquakes", { method: "GET", headers: {} });
     if (!map) initMap();
 
     if (quakeLayer) quakeLayer.remove();
     const layer = L.layerGroup();
+
     data.items.forEach((q) => {
       const color = q.mag >= 5 ? "#ff595e" : q.mag >= 3 ? "#ffd166" : "#31c48d";
       const marker = L.circleMarker([q.lat, q.lon], {
         radius: Math.max(4, (q.mag || 1) * 2),
         color,
         weight: 1,
-        fillOpacity: 0.7,
+        fillOpacity: 0.75,
       }).bindPopup(
         `<strong>${q.place || "Sem local"}</strong><br/>Magnitude: ${q.mag ?? "N/A"}<br/><a href="${q.url}" target="_blank" rel="noreferrer">Detalhes</a>`
       );
@@ -176,21 +218,71 @@ async function onMapFeed() {
 
 async function onVuln() {
   const host = document.getElementById("target-host").value.trim();
-  output("vuln-output", "Analisando, aguarde...");
+  output("vuln-output", "Analisando domínio...");
   try {
     const data = await api(`/api/vuln?host=${encodeURIComponent(host)}`, { method: "GET", headers: {} });
-    output("vuln-output", {
-      host: data.host,
-      ip: data.ip,
-      risk: data.risk,
-      open_ports: data.ports,
-      vulns: data.vulns,
-      cpes: data.cpes,
-      tags: data.tags,
-      source: data.source,
-    });
+    output("vuln-output", data);
   } catch (err) {
     output("vuln-output", `Erro: ${err.message}`);
+  }
+}
+
+async function onIntel() {
+  const ip = document.getElementById("intel-ip").value.trim();
+  output("intel-output", "Consultando threat intel...");
+  try {
+    const data = await api(`/api/intel/ip?ip=${encodeURIComponent(ip)}`, { method: "GET", headers: {} });
+    output("intel-output", data);
+  } catch (err) {
+    output("intel-output", `Erro: ${err.message}`);
+  }
+}
+
+async function onFeodo() {
+  const ip = document.getElementById("feodo-ip").value.trim();
+  output("feodo-output", "Consultando feed...");
+  try {
+    const q = ip ? `?ip=${encodeURIComponent(ip)}` : "";
+    const data = await api(`/api/threats/feodo${q}`, { method: "GET", headers: {} });
+    output("feodo-output", data);
+  } catch (err) {
+    output("feodo-output", `Erro: ${err.message}`);
+  }
+}
+
+async function onCves() {
+  const limit = document.getElementById("cve-limit").value.trim() || "8";
+  output("cve-output", "Buscando CVEs recentes...");
+  try {
+    const data = await api(`/api/cves/latest?limit=${encodeURIComponent(limit)}`, { method: "GET", headers: {} });
+    output("cve-output", data);
+  } catch (err) {
+    output("cve-output", `Erro: ${err.message}`);
+  }
+}
+
+async function onCerts() {
+  const domain = document.getElementById("cert-domain").value.trim();
+  output("cert-output", "Consultando certificados...");
+  try {
+    const data = await api(`/api/domain/certs?domain=${encodeURIComponent(domain)}`, { method: "GET", headers: {} });
+    output("cert-output", data);
+  } catch (err) {
+    output("cert-output", `Erro: ${err.message}`);
+  }
+}
+
+async function onPwnedPassword() {
+  const password = document.getElementById("pwd-check").value;
+  output("pwd-output", "Checando vazamento com k-Anonymity...");
+  try {
+    const data = await api("/api/password/pwned-check", {
+      method: "POST",
+      body: JSON.stringify({ password }),
+    });
+    output("pwd-output", data);
+  } catch (err) {
+    output("pwd-output", `Erro: ${err.message}`);
   }
 }
 
@@ -200,13 +292,18 @@ function boot() {
   document.getElementById("register-form").addEventListener("submit", onRegister);
   document.getElementById("login-form").addEventListener("submit", onLogin);
   document.getElementById("logout-btn").addEventListener("click", onLogout);
+
   document.getElementById("geo-btn").addEventListener("click", onGeo);
   document.getElementById("ping-btn").addEventListener("click", onPing);
   document.getElementById("map-feed-btn").addEventListener("click", onMapFeed);
   document.getElementById("vuln-btn").addEventListener("click", onVuln);
+  document.getElementById("intel-btn").addEventListener("click", onIntel);
+  document.getElementById("feodo-btn").addEventListener("click", onFeodo);
+  document.getElementById("cve-btn").addEventListener("click", onCves);
+  document.getElementById("cert-btn").addEventListener("click", onCerts);
+  document.getElementById("pwd-btn").addEventListener("click", onPwnedPassword);
 
   checkSession();
 }
 
 document.addEventListener("DOMContentLoaded", boot);
-
