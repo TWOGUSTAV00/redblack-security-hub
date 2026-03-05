@@ -13,14 +13,14 @@
     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
     crossorigin=""
   />
-  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
   <div class="scanline"></div>
   <header class="topbar">
     <div>
       <h1>RedBlack Security Hub</h1>
-      <p class="subtitle">Geolocalização, latência, mapa global e análise de segurança sem API key</p>
+      <p class="subtitle">Backend real + APIs sem key: geolocalização, latência, mapa global e teste de segurança</p>
     </div>
     <div class="hacker-corner" aria-hidden="true">
       <div class="hacker">
@@ -34,26 +34,26 @@
 
   <main>
     <section id="auth-card" class="card auth-card">
-      <h2>Acesso</h2>
-      <p class="small">Cadastro local para demonstração (dados salvos no navegador).</p>
+      <h2>Acesso Seguro</h2>
+      <p class="small">Autenticação por backend com senha em hash. Admin atualizado: Nemo.</p>
       <div class="auth-tabs">
-        <button id="btn-login-tab" class="tab active">Login</button>
-        <button id="btn-register-tab" class="tab">Registrar</button>
+        <button id="btn-login-tab" class="tab active" type="button">Login</button>
+        <button id="btn-register-tab" class="tab" type="button">Registrar</button>
       </div>
 
       <form id="login-form">
         <label for="login-user">Usuário</label>
         <input id="login-user" required minlength="3" />
         <label for="login-pass">Senha</label>
-        <input id="login-pass" type="password" required minlength="4" />
+        <input id="login-pass" type="password" required minlength="8" />
         <button type="submit" class="btn-danger">Entrar</button>
       </form>
 
       <form id="register-form" class="hidden">
         <label for="reg-user">Novo usuário</label>
-        <input id="reg-user" required minlength="3" />
+        <input id="reg-user" required minlength="3" maxlength="32" />
         <label for="reg-pass">Nova senha</label>
-        <input id="reg-pass" type="password" required minlength="4" />
+        <input id="reg-pass" type="password" required minlength="8" />
         <button type="submit" class="btn-danger">Criar conta</button>
       </form>
       <p id="auth-message" class="message"></p>
@@ -61,43 +61,46 @@
 
     <section id="dashboard" class="hidden">
       <div class="actions-row">
-        <h2>Painel</h2>
+        <h2>Painel Operacional</h2>
         <div>
           <span id="welcome-user"></span>
-          <button id="logout-btn" class="btn-outline">Sair</button>
+          <button id="logout-btn" class="btn-outline" type="button">Sair</button>
         </div>
       </div>
 
       <div class="grid">
         <article class="card">
           <h3>1) Geolocalização por IP</h3>
-          <button id="geo-btn" class="btn-danger">Consultar localização</button>
+          <label for="geo-ip">IP (opcional)</label>
+          <input id="geo-ip" placeholder="Ex.: 8.8.8.8" />
+          <button id="geo-btn" class="btn-danger" type="button">Consultar localização</button>
           <pre id="geo-output" class="output"></pre>
-          <p class="small">Fonte: ipapi.co (sem chave).</p>
+          <p class="small">Fonte: ipwho.is</p>
         </article>
 
         <article class="card">
-          <h3>2) Medição de ping (latência HTTP)</h3>
+          <h3>2) Medição de latência real</h3>
           <label for="ping-url">URL para teste</label>
           <input id="ping-url" value="https://example.com" />
-          <button id="ping-btn" class="btn-danger">Testar latência</button>
+          <button id="ping-btn" class="btn-danger" type="button">Testar latência</button>
           <pre id="ping-output" class="output"></pre>
-          <p class="small">No navegador, o "ping" é aproximado via requisição HTTP.</p>
+          <p class="small">Medição feita pelo backend (3 tentativas).</p>
         </article>
 
         <article class="card full">
-          <h3>3) Mapa global</h3>
+          <h3>3) Mapa global de eventos reais (terremotos 24h)</h3>
+          <button id="map-feed-btn" class="btn-danger" type="button">Carregar eventos globais</button>
           <div id="map"></div>
-          <p class="small">Fonte do mapa: OpenStreetMap + Leaflet.</p>
+          <p class="small">Fonte: USGS GeoJSON + OpenStreetMap</p>
         </article>
 
         <article class="card full">
-          <h3>4) Verificação básica de vulnerabilidade (headers e nota)</h3>
+          <h3>4) Teste de vulnerabilidade real (sem key)</h3>
           <label for="target-host">Domínio alvo (ex.: example.com)</label>
           <input id="target-host" placeholder="example.com" />
-          <button id="vuln-btn" class="btn-danger">Analisar domínio</button>
+          <button id="vuln-btn" class="btn-danger" type="button">Analisar domínio</button>
           <pre id="vuln-output" class="output"></pre>
-          <p class="small">Fonte: Mozilla HTTP Observatory API (sem chave). Use somente domínios autorizados.</p>
+          <p class="small">Fonte: Shodan InternetDB API</p>
         </article>
       </div>
     </section>
@@ -108,6 +111,8 @@
     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
     crossorigin=""
   ></script>
-  <script src="./app.js"></script>
+  <script src="/static/app.js"></script>
 </body>
 </html>
+
+
