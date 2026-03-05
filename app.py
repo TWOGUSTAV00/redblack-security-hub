@@ -146,6 +146,15 @@ def init_db():
         """
     )
 
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS active_sessions (
+            username TEXT PRIMARY KEY,
+            last_seen INTEGER NOT NULL
+        )
+        """
+    )
+
     conn.commit()
 
     admin_pass = "gustavo270998"
@@ -199,6 +208,36 @@ def save_ai_message(username, role, content, source=None, metadata=None):
     )
     conn.commit()
     conn.close()
+
+
+def set_user_active(username):
+    now_ts = int(time.time())
+    conn = db_conn()
+    conn.execute(
+        "INSERT INTO active_sessions (username, last_seen) VALUES (?, ?) "
+        "ON CONFLICT(username) DO UPDATE SET last_seen=excluded.last_seen",
+        (username, now_ts),
+    )
+    conn.commit()
+    conn.close()
+
+
+def clear_user_active(username):
+    conn = db_conn()
+    conn.execute("DELETE FROM active_sessions WHERE username = ?", (username,))
+    conn.commit()
+    conn.close()
+
+
+def get_online_users():
+    threshold = int(time.time()) - 90
+    conn = db_conn()
+    rows = conn.execute(
+        "SELECT username, last_seen FROM active_sessions WHERE last_seen >= ? ORDER BY username",
+        (threshold,),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 def current_user():
@@ -365,6 +404,7 @@ def auth_login():
 
     session.clear()
     session["username"] = row["username"]
+    set_user_active(row["username"])
     record_access("login_success", row["username"])
     return jsonify({"ok": True, "username": row["username"], "is_admin": is_admin(row["username"])})
 
@@ -372,8 +412,19 @@ def auth_login():
 @app.post("/api/auth/logout")
 def auth_logout():
     user = current_user() or "unknown"
+    if user != "unknown":
+        clear_user_active(user)
     record_access("logout", user)
     session.clear()
+    return jsonify({"ok": True})
+
+
+@app.post("/api/auth/ping")
+def auth_ping():
+    user, err = require_auth()
+    if err:
+        return err
+    set_user_active(user)
     return jsonify({"ok": True})
 
 
@@ -391,8 +442,9 @@ def admin_audit():
     conn = db_conn()
     rows = conn.execute(
         """
-        SELECT id, event_type, username, ip, city, region, country, user_agent, details, created_at
+        SELECT id, event_type, username, ip, city, region, country, created_at
         FROM access_logs
+        WHERE event_type IN ('visit', 'login_success')
         ORDER BY id DESC
         LIMIT ?
         """,
@@ -400,7 +452,7 @@ def admin_audit():
     ).fetchall()
     conn.close()
 
-    return jsonify({"count": len(rows), "items": [dict(r) for r in rows]})
+    return jsonify({"count": len(rows), "items": [dict(r) for r in rows], "online_users": get_online_users()})
 
 
 @app.get("/api/admin/bans")
@@ -901,13 +953,14 @@ def ai_ask():
     record_access("ai_ask", user, question[:120])
 
     prompt = (
-        "Voce e Nemo IA, assistente de ciberseguranca. Responda em portugues, objetivo, pratico e seguro. "
+        "Voce e Nemo IA, assistente tecnico. Responda em portugues, rapido e direto. "
+        "Quando a pergunta for avancada, entregue codigo, arquitetura e exemplos praticos. "
         "Pergunta: " + question
     )
 
     try:
         url = f"https://text.pollinations.ai/{quote(prompt)}"
-        r = requests.get(url, timeout=25)
+        r = requests.get(url, timeout=12)
         r.raise_for_status()
         answer = (r.text or "").strip()
         if answer:
@@ -919,7 +972,7 @@ def ai_ask():
     ddg = requests.get(
         "https://api.duckduckgo.com/",
         params={"q": question, "format": "json", "no_html": 1, "no_redirect": 1},
-        timeout=15,
+        timeout=10,
     )
     ddg.raise_for_status()
     j = ddg.json()

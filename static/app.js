@@ -2,6 +2,7 @@
 let geoMarker;
 let quakeLayer;
 let isAdmin = false;
+let heartbeatTimer = null;
 
 function output(id, value) {
   const el = document.getElementById(id);
@@ -63,6 +64,18 @@ function setTopic(name) {
   document.querySelectorAll(".topic-panel").forEach((panel) => {
     panel.classList.toggle("active", panel.id === `topic-${name}`);
   });
+
+  if (name === "geo" && map) {
+    setTimeout(() => map.invalidateSize(), 60);
+  }
+}
+
+async function startHeartbeat() {
+  if (heartbeatTimer) clearInterval(heartbeatTimer);
+  await api("/api/auth/ping", { method: "POST", headers: {} }).catch(() => null);
+  heartbeatTimer = setInterval(async () => {
+    await api("/api/auth/ping", { method: "POST", headers: {} }).catch(() => null);
+  }, 25000);
 }
 
 async function requestBrowserLocation() {
@@ -111,47 +124,23 @@ async function refreshAudit() {
   if (!isAdmin) return;
   const limit = document.getElementById("audit-limit").value.trim() || "80";
   output("audit-output", "Carregando auditoria...");
+  output("online-output", "Carregando online...");
   try {
     const data = await api(`/api/admin/audit?limit=${encodeURIComponent(limit)}`, { method: "GET", headers: {} });
-    output("audit-output", data);
+
+    const concise = (data.items || []).map((r) => ({
+      evento: r.event_type,
+      usuario: r.username,
+      ip: r.ip,
+      local: [r.city, r.region, r.country].filter(Boolean).join(" / "),
+      horario: r.created_at,
+    }));
+
+    output("audit-output", concise);
+    output("online-output", (data.online_users || []).map((u) => ({ usuario: u.username, ultimo_ping: u.last_seen })));
   } catch (err) {
     output("audit-output", `Erro: ${err.message}`);
-  }
-}
-
-async function refreshBans() {
-  if (!isAdmin) return;
-  output("bans-output", "Carregando bans...");
-  try {
-    const data = await api("/api/admin/bans", { method: "GET", headers: {} });
-    output("bans-output", data);
-  } catch (err) {
-    output("bans-output", `Erro: ${err.message}`);
-  }
-}
-
-async function banAction(target_type, target_value, reason) {
-  if (!isAdmin) return;
-  await api("/api/admin/ban", {
-    method: "POST",
-    body: JSON.stringify({ target_type, target_value, reason }),
-  });
-  await refreshBans();
-  await refreshAudit();
-}
-
-async function unbanAction() {
-  const target_type = document.getElementById("unban-type").value.trim();
-  const target_value = document.getElementById("unban-value").value.trim();
-  try {
-    await api("/api/admin/unban", {
-      method: "POST",
-      body: JSON.stringify({ target_type, target_value }),
-    });
-    await refreshBans();
-    await refreshAudit();
-  } catch (err) {
-    output("bans-output", `Erro: ${err.message}`);
+    output("online-output", `Erro: ${err.message}`);
   }
 }
 
@@ -162,13 +151,11 @@ function renderAiHistory(items) {
 
   const userQuestions = items.filter((m) => m.role === "user").slice(-30).reverse();
   historyList.innerHTML = userQuestions
-    .map(
-      (m) => `<button class="ai-history-item" type="button">${escapeHtml((m.content || "").slice(0, 70))}</button>`
-    )
+    .map((m) => `<div class="ai-history-item">Pergunta em ${escapeHtml((m.created_at || "").replace("T", " "))}</div>`)
     .join("");
 
   if (!items.length) {
-    stream.innerHTML = '<div class="ai-empty">Historico vazio. Faca a primeira pergunta para o Nemo IA.</div>';
+    stream.innerHTML = '<div class="ai-empty">Sem perguntas ainda. O historico so aparece depois da sua pesquisa.</div>';
     return;
   }
 
@@ -239,14 +226,16 @@ function showDashboard(user, adminFlag) {
   requestBrowserLocation();
   setTopic("admin");
 
-  if (isAdmin) {
-    refreshAudit();
-    refreshBans();
-  }
+  if (isAdmin) refreshAudit();
   loadAiHistory();
+  startHeartbeat();
 }
 
 function showAuth() {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
   document.getElementById("dashboard").classList.add("hidden");
   document.getElementById("auth-card").classList.remove("hidden");
 }
@@ -309,7 +298,16 @@ async function onGeo() {
   try {
     const q = ip ? `?ip=${encodeURIComponent(ip)}` : "";
     const data = await api(`/api/geo/ip${q}`, { method: "GET", headers: {} });
-    output("geo-output", data);
+
+    output("geo-output", {
+      ip: data.ip,
+      cidade: data.city,
+      regiao: data.region,
+      pais: data.country,
+      timezone: data.timezone,
+      provedor: data.org,
+    });
+
     if (data.latitude && data.longitude && map) {
       const p = [Number(data.latitude), Number(data.longitude)];
       map.setView(p, 6);
@@ -358,21 +356,10 @@ async function onConnectionTest() {
     const uSec = (performance.now() - u0) / 1000;
     const uploadMbps = ((upBytes * 8) / uSec) / (1024 * 1024);
 
-    const net = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-    const browserHints = net
-      ? {
-          effective_type: net.effectiveType,
-          downlink_hint_mbps: net.downlink,
-          rtt_hint_ms: net.rtt,
-        }
-      : null;
-
     output("conn-output", {
-      ping_ms_avg: Number(pingMs.toFixed(2)),
+      latencia_media_ms: Number(pingMs.toFixed(2)),
       download_mbps: Number(downloadMbps.toFixed(2)),
       upload_mbps: Number(uploadMbps.toFixed(2)),
-      browser_network_hint: browserHints,
-      notes: "Valores aproximados com base no servidor atual.",
     });
   } catch (err) {
     output("conn-output", `Erro no speed test: ${err.message}`);
@@ -393,14 +380,15 @@ async function onMapFeed() {
         color,
         weight: 1,
         fillOpacity: 0.75,
-      }).bindPopup(`<strong>${q.place || "Sem local"}</strong><br/>Mag: ${q.mag ?? "N/A"}`);
+      }).bindPopup(`<strong>${q.place || "Sem local"}</strong><br/>Magnitude: ${q.mag ?? "N/A"}`);
       layer.addLayer(marker);
     });
 
     layer.addTo(map);
     quakeLayer = layer;
+    setTimeout(() => map.invalidateSize(), 60);
   } catch (err) {
-    alert(`Falha ao carregar eventos globais: ${err.message}`);
+    output("conn-output", `Falha ao carregar mapa global: ${err.message}`);
   }
 }
 
@@ -409,7 +397,15 @@ async function onVuln() {
   try {
     const host = document.getElementById("target-host").value.trim();
     const data = await api(`/api/vuln?host=${encodeURIComponent(host)}`, { method: "GET", headers: {} });
-    output("vuln-output", data);
+    output("vuln-output", {
+      host: data.host,
+      ip: data.ip,
+      risk: data.risk,
+      portas_abertas: data.ports,
+      vulnerabilidades: data.vulns,
+      cpes: data.cpes,
+      tags: data.tags,
+    });
   } catch (err) {
     output("vuln-output", `Erro: ${err.message}`);
   }
@@ -496,26 +492,6 @@ function bindEvents() {
   });
 
   document.getElementById("audit-btn").addEventListener("click", refreshAudit);
-  document.getElementById("bans-refresh-btn").addEventListener("click", refreshBans);
-  document.getElementById("ban-user-btn").addEventListener("click", async () => {
-    const u = document.getElementById("ban-user").value.trim();
-    const reason = document.getElementById("ban-user-reason").value.trim();
-    try {
-      await banAction("username", u, reason);
-    } catch (err) {
-      output("bans-output", `Erro: ${err.message}`);
-    }
-  });
-  document.getElementById("ban-ip-btn").addEventListener("click", async () => {
-    const ip = document.getElementById("ban-ip").value.trim();
-    const reason = document.getElementById("ban-ip-reason").value.trim();
-    try {
-      await banAction("ip", ip, reason);
-    } catch (err) {
-      output("bans-output", `Erro: ${err.message}`);
-    }
-  });
-  document.getElementById("unban-btn").addEventListener("click", unbanAction);
 
   document.getElementById("geo-btn").addEventListener("click", onGeo);
   document.getElementById("conn-test-btn").addEventListener("click", onConnectionTest);
