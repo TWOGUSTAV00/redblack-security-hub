@@ -163,15 +163,23 @@ function renderAiHistory(items) {
     .map((m) => {
       const roleClass = m.role === "user" ? "user" : "assistant";
       const sourceLine = m.source ? `<div class="ai-source">Fonte: ${escapeHtml(m.source)}</div>` : "";
+      const delBtn = m.id ? `<button class="ai-del-btn" data-ai-id="${m.id}" type="button">Excluir</button>` : "";
       return `
         <div class="ai-msg ${roleClass}">
           <div class="ai-role">${m.role === "user" ? "Voce" : "Nemo IA"}</div>
           <div class="ai-content">${escapeHtml(m.content)}</div>
           ${sourceLine}
+          ${delBtn}
         </div>
       `;
     })
     .join("");
+
+  stream.querySelectorAll(".ai-del-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      await deleteAiMessage(btn.dataset.aiId);
+    });
+  });
 
   stream.scrollTop = stream.scrollHeight;
 }
@@ -183,6 +191,27 @@ async function loadAiHistory() {
   } catch (err) {
     const stream = document.getElementById("ai-chat-stream");
     if (stream) stream.innerHTML = `<div class="ai-empty">Erro ao carregar historico: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+async function deleteAiMessage(id) {
+  if (!id) return;
+  try {
+    await api(`/api/ai/history/${encodeURIComponent(id)}`, { method: "DELETE", headers: {} });
+    await loadAiHistory();
+  } catch (err) {
+    const stream = document.getElementById("ai-chat-stream");
+    if (stream) stream.innerHTML += `<div class="ai-empty">Erro ao excluir: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+async function clearAiHistory() {
+  try {
+    await api("/api/ai/history", { method: "DELETE", headers: {} });
+    await loadAiHistory();
+  } catch (err) {
+    const stream = document.getElementById("ai-chat-stream");
+    if (stream) stream.innerHTML += `<div class="ai-empty">Erro ao limpar historico: ${escapeHtml(err.message)}</div>`;
   }
 }
 
@@ -508,6 +537,7 @@ function bindEvents() {
 
   document.getElementById("ai-ask-btn").addEventListener("click", onAiAsk);
   document.getElementById("ai-refresh-btn").addEventListener("click", loadAiHistory);
+  document.getElementById("ai-clear-btn").addEventListener("click", clearAiHistory);
   document.getElementById("ai-question").addEventListener("keydown", (e) => {
     if (e.key === "Enter") onAiAsk();
   });
@@ -519,3 +549,8 @@ function boot() {
 }
 
 document.addEventListener("DOMContentLoaded", boot);
+
+
+
+
+

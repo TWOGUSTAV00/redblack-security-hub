@@ -938,6 +938,31 @@ def ai_history():
     return jsonify({"count": len(items), "items": items})
 
 
+
+@app.delete("/api/ai/history")
+def ai_history_clear():
+    user, err = require_auth()
+    if err:
+        return err
+
+    conn = db_conn()
+    conn.execute("DELETE FROM ai_messages WHERE username = ?", (user,))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.delete("/api/ai/history/<int:message_id>")
+def ai_history_delete_one(message_id):
+    user, err = require_auth()
+    if err:
+        return err
+
+    conn = db_conn()
+    conn.execute("DELETE FROM ai_messages WHERE id = ? AND username = ?", (message_id, user))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
 @app.post("/api/ai/ask")
 def ai_ask():
     user, err = require_auth()
@@ -999,3 +1024,4 @@ if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=False)
 else:
     init_db()
+
