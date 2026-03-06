@@ -5,6 +5,7 @@ import re
 import socket
 import sqlite3
 import time
+import uuid
 from datetime import timedelta
 from pathlib import Path
 from urllib.parse import quote, urlparse
@@ -13,10 +14,18 @@ import requests
 from flask import Flask, Response, jsonify, render_template, request, session
 from werkzeug.exceptions import HTTPException
 from werkzeug.security import check_password_hash, generate_password_hash
-
+from werkzeug.utils import secure_filename
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "app.db"
 ALLOWED_SCHEMES = {"http", "https"}
+UPLOAD_DIR = BASE_DIR / "static" / "uploads"
+AVATAR_DIR = UPLOAD_DIR / "avatars"
+CHAT_DIR = UPLOAD_DIR / "chat"
+for _d in (UPLOAD_DIR, AVATAR_DIR, CHAT_DIR):
+    _d.mkdir(parents=True, exist_ok=True)
+ALLOWED_IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp"}
+ALLOWED_AUDIO_EXT = {".mp3", ".wav", ".ogg", ".m4a", ".webm"}
+
 ADMIN_USERNAME = "Nemo"
 DEEPSEEK_API_KEY = (os.environ.get("DEEPSEEK_API_KEY") or "").strip()
 DEEPSEEK_MODEL = (os.environ.get("DEEPSEEK_MODEL") or "deepseek-chat").strip()
@@ -108,6 +117,8 @@ def ensure_users_schema(conn):
     cols = {row["name"] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
     if "is_banned" not in cols:
         conn.execute("ALTER TABLE users ADD COLUMN is_banned INTEGER NOT NULL DEFAULT 0")
+    if "avatar_path" not in cols:
+        conn.execute("ALTER TABLE users ADD COLUMN avatar_path TEXT")
 
 
 def ensure_knowledge_base_seed(conn):
@@ -214,6 +225,20 @@ def init_db():
         CREATE TABLE IF NOT EXISTS active_sessions (
             username TEXT PRIMARY KEY,
             last_seen INTEGER NOT NULL
+        )
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS chat_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sender TEXT NOT NULL,
+            receiver TEXT NOT NULL,
+            message_type TEXT NOT NULL,
+            message_text TEXT,
+            file_path TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
         """
     )
@@ -489,6 +514,26 @@ def get_online_users():
     return [dict(r) for r in rows]
 
 
+def to_public_file_url(abs_path):
+    try:
+        rel = Path(abs_path).resolve().relative_to((BASE_DIR / "static").resolve())
+    except Exception:
+        return None
+    return f"/static/{str(rel).replace('\\', '/')}"
+
+
+def save_uploaded_file(file_obj, target_dir, allowed_exts):
+    if not file_obj or not file_obj.filename:
+        return None
+    filename = secure_filename(file_obj.filename)
+    ext = Path(filename).suffix.lower()
+    if ext not in allowed_exts:
+        return None
+    final_name = f"{uuid.uuid4().hex}{ext}"
+    full = target_dir / final_name
+    file_obj.save(str(full))
+    return str(full)
+
 def current_user():
     return session.get("username")
 
@@ -674,6 +719,188 @@ def auth_ping():
     if err:
         return err
     set_user_active(user)
+    return jsonify({"ok": True})
+
+
+@app.get("/api/profile")
+def profile_get():
+    user, err = require_auth()
+    if err:
+        return err
+
+    conn = db_conn()
+    row = conn.execute("SELECT username, avatar_path FROM users WHERE username = ?", (user,)).fetchone()
+    conn.close()
+    if not row:
+        return jsonify({"error": "Usuario nao encontrado"}), 404
+    avatar_url = to_public_file_url(row["avatar_path"]) if row["avatar_path"] else None
+    return jsonify({"username": row["username"], "avatar_url": avatar_url})
+
+
+@app.post("/api/profile/rename")
+def profile_rename():
+    user, err = require_auth()
+    if err:
+        return err
+
+    data = request.get_json(silent=True) or {}
+    new_username = (data.get("new_username") or "").strip()
+    password = data.get("password") or ""
+
+    if not valid_username(new_username):
+        return jsonify({"error": "Novo nome invalido"}), 400
+    if new_username == user:
+        return jsonify({"ok": True, "username": user})
+
+    conn = db_conn()
+    row = conn.execute("SELECT password_hash FROM users WHERE username = ?", (user,)).fetchone()
+    if not row or not check_password_hash(row["password_hash"], password):
+        conn.close()
+        return jsonify({"error": "Senha incorreta"}), 401
+
+    exists = conn.execute("SELECT 1 FROM users WHERE username = ?", (new_username,)).fetchone()
+    if exists:
+        conn.close()
+        return jsonify({"error": "Nome de usuario ja em uso"}), 409
+
+    conn.execute("UPDATE users SET username = ? WHERE username = ?", (new_username, user))
+    conn.execute("UPDATE access_logs SET username = ? WHERE username = ?", (new_username, user))
+    conn.execute("UPDATE ai_conversations SET username = ? WHERE username = ?", (new_username, user))
+    conn.execute("UPDATE ai_messages SET username = ? WHERE username = ?", (new_username, user))
+    conn.execute("UPDATE active_sessions SET username = ? WHERE username = ?", (new_username, user))
+    conn.execute("UPDATE chat_messages SET sender = ? WHERE sender = ?", (new_username, user))
+    conn.execute("UPDATE chat_messages SET receiver = ? WHERE receiver = ?", (new_username, user))
+    conn.commit()
+    conn.close()
+
+    session["username"] = new_username
+    record_access("profile_rename", new_username, f"old={user}")
+    return jsonify({"ok": True, "username": new_username})
+
+
+@app.post("/api/profile/avatar")
+def profile_avatar():
+    user, err = require_auth()
+    if err:
+        return err
+
+    uploaded = request.files.get("avatar")
+    file_path = save_uploaded_file(uploaded, AVATAR_DIR, ALLOWED_IMAGE_EXT)
+    if not file_path:
+        return jsonify({"error": "Arquivo de avatar invalido"}), 400
+
+    conn = db_conn()
+    conn.execute("UPDATE users SET avatar_path = ? WHERE username = ?", (file_path, user))
+    conn.commit()
+    conn.close()
+
+    return jsonify({"ok": True, "avatar_url": to_public_file_url(file_path)})
+
+
+@app.get("/api/users")
+def users_list():
+    user, err = require_auth()
+    if err:
+        return err
+
+    conn = db_conn()
+    rows = conn.execute(
+        """
+        SELECT username, avatar_path,
+               COALESCE((SELECT last_seen FROM active_sessions a WHERE a.username = u.username), 0) AS last_seen
+        FROM users u
+        WHERE username <> ?
+        ORDER BY username
+        """
+        , (user,),
+    ).fetchall()
+    conn.close()
+
+    threshold = int(time.time()) - 90
+    items = []
+    for r in rows:
+        items.append({
+            "username": r["username"],
+            "avatar_url": to_public_file_url(r["avatar_path"]) if r["avatar_path"] else None,
+            "online": int(r["last_seen"] or 0) >= threshold,
+        })
+    return jsonify({"count": len(items), "items": items})
+
+
+@app.get("/api/chat/messages")
+def chat_messages_list():
+    user, err = require_auth()
+    if err:
+        return err
+
+    peer = (request.args.get("with") or "").strip()
+    if not valid_username(peer):
+        return jsonify({"error": "Usuario alvo invalido"}), 400
+
+    try:
+        limit = max(20, min(300, int(request.args.get("limit", "120"))))
+    except ValueError:
+        limit = 120
+
+    conn = db_conn()
+    rows = conn.execute(
+        """
+        SELECT id, sender, receiver, message_type, message_text, file_path, created_at
+        FROM chat_messages
+        WHERE (sender = ? AND receiver = ?) OR (sender = ? AND receiver = ?)
+        ORDER BY id DESC
+        LIMIT ?
+        """
+        , (user, peer, peer, user, limit),
+    ).fetchall()
+    conn.close()
+
+    items = []
+    for r in reversed(rows):
+        item = dict(r)
+        item["file_url"] = to_public_file_url(item.get("file_path")) if item.get("file_path") else None
+        items.append(item)
+    return jsonify({"count": len(items), "items": items})
+
+
+@app.post("/api/chat/send")
+def chat_send():
+    user, err = require_auth()
+    if err:
+        return err
+
+    to_user = (request.form.get("to") or "").strip()
+    if not valid_username(to_user) or to_user == user:
+        return jsonify({"error": "Destino invalido"}), 400
+
+    message_text = (request.form.get("message") or "").strip()
+    image = request.files.get("image")
+    audio = request.files.get("audio")
+
+    message_type = "text"
+    file_path = None
+    if image and image.filename:
+        file_path = save_uploaded_file(image, CHAT_DIR, ALLOWED_IMAGE_EXT)
+        if not file_path:
+            return jsonify({"error": "Imagem invalida"}), 400
+        message_type = "image"
+    elif audio and audio.filename:
+        file_path = save_uploaded_file(audio, CHAT_DIR, ALLOWED_AUDIO_EXT)
+        if not file_path:
+            return jsonify({"error": "Audio invalido"}), 400
+        message_type = "audio"
+
+    if not message_text and not file_path:
+        return jsonify({"error": "Mensagem vazia"}), 400
+
+    conn = db_conn()
+    conn.execute(
+        "INSERT INTO chat_messages (sender, receiver, message_type, message_text, file_path) VALUES (?, ?, ?, ?, ?)",
+        (user, to_user, message_type, message_text[:4000], file_path),
+    )
+    conn.commit()
+    conn.close()
+
     return jsonify({"ok": True})
 
 
@@ -1159,6 +1386,50 @@ def password_pwned_check():
     )
 
 
+@app.get("/api/cyber/cisa-kev")
+def cyber_cisa_kev():
+    _, err = require_auth()
+    if err:
+        return err
+
+    r = requests.get("https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json", timeout=20)
+    r.raise_for_status()
+    data = r.json()
+    vulns = data.get("vulnerabilities") or []
+    items = vulns[:50]
+    return jsonify({"count": len(items), "items": items})
+
+
+@app.get("/api/cyber/urlhaus-recent")
+def cyber_urlhaus_recent():
+    _, err = require_auth()
+    if err:
+        return err
+
+    r = requests.get("https://urlhaus.abuse.ch/downloads/json_recent/", timeout=20)
+    r.raise_for_status()
+    data = r.json()
+    urls = data.get("urls") or []
+    items = urls[:50]
+    return jsonify({"count": len(items), "items": items})
+
+
+@app.get("/api/cyber/security-headers")
+def cyber_security_headers():
+    _, err = require_auth()
+    if err:
+        return err
+
+    domain = (request.args.get("domain") or "").strip().lower()
+    if not valid_domain(domain):
+        return jsonify({"error": "Dominio invalido"}), 400
+
+    r = requests.get(f"https://securityheaders.com/?q={domain}&hide=on&followRedirects=on&format=json", timeout=20)
+    r.raise_for_status()
+    data = r.json()
+    return jsonify(data)
+
+
 @app.get("/api/ai/conversations")
 def ai_conversations_list():
     user, err = require_auth()
@@ -1428,6 +1699,8 @@ if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=False)
 else:
     init_db()
+
+
 
 
 

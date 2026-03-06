@@ -5,6 +5,8 @@ let isAdmin = false;
 let heartbeatTimer = null;
 let currentConversationId = null;
 let aiBusy = false;
+let selectedPeer = null;
+let socialTimer = null;
 
 function output(id, value) {
   const el = document.getElementById(id);
@@ -87,12 +89,13 @@ function setAiStatus(msg) {
 }
 
 async function api(path, options = {}) {
+  const headers = { ...(options.headers || {}) };
+  const isFormData = options.body instanceof FormData;
+  if (!isFormData && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
+
   const res = await fetch(path, {
     ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
+    headers,
     credentials: "same-origin",
   });
 
@@ -132,6 +135,8 @@ function setTopic(name) {
     panel.classList.toggle("active", panel.id === `topic-${name}`);
   });
   if (name === "geo" && map) setTimeout(() => map.invalidateSize(), 60);
+  if (name === "profile") loadProfile();
+  if (name === "social") { loadUsers(); loadMessages(); }
 }
 
 async function startHeartbeat() {
@@ -397,7 +402,10 @@ function showDashboard(user, adminFlag) {
 
   if (isAdmin) refreshAudit();
   loadConversations().then(loadAiHistory);
+  loadProfile();
+  loadUsers();
   startHeartbeat();
+  startSocialPolling();
 }
 
 function showAuth() {
@@ -407,6 +415,7 @@ function showAuth() {
   }
   document.getElementById("dashboard").classList.add("hidden");
   document.getElementById("auth-card").classList.remove("hidden");
+  if (socialTimer) { clearInterval(socialTimer); socialTimer = null; }
 }
 
 async function checkSession() {
@@ -647,6 +656,171 @@ async function onPwnedPassword() {
   }
 }
 
+async function onCisaKev() {
+  output("cisa-output", "Carregando CISA KEV...");
+  try {
+    const data = await api("/api/cyber/cisa-kev", { method: "GET", headers: {} });
+    output("cisa-output", data);
+  } catch (err) {
+    output("cisa-output", `Erro: ${err.message}`);
+  }
+}
+
+async function onUrlhaus() {
+  output("urlhaus-output", "Carregando URLhaus...");
+  try {
+    const data = await api("/api/cyber/urlhaus-recent", { method: "GET", headers: {} });
+    output("urlhaus-output", data);
+  } catch (err) {
+    output("urlhaus-output", `Erro: ${err.message}`);
+  }
+}
+
+async function onSecurityHeaders() {
+  output("sec-output", "Consultando Security Headers...");
+  try {
+    const domain = document.getElementById("sec-domain").value.trim();
+    const data = await api(`/api/cyber/security-headers?domain=${encodeURIComponent(domain)}`, { method: "GET", headers: {} });
+    output("sec-output", data);
+  } catch (err) {
+    output("sec-output", `Erro: ${err.message}`);
+  }
+}
+
+async function loadProfile() {
+  try {
+    const data = await api("/api/profile", { method: "GET", headers: {} });
+    document.getElementById("profile-current-name").textContent = `Usuario atual: ${data.username}`;
+    const avatar = document.getElementById("profile-avatar-preview");
+    avatar.src = data.avatar_url || "https://placehold.co/96x96/111/eee?text=User";
+  } catch (err) {
+    document.getElementById("profile-msg").textContent = `Erro perfil: ${err.message}`;
+  }
+}
+
+async function onProfileRename() {
+  const msg = document.getElementById("profile-msg");
+  msg.textContent = "Atualizando nome...";
+  try {
+    const newUsername = document.getElementById("profile-new-username").value.trim();
+    const password = document.getElementById("profile-password-confirm").value;
+    const data = await api("/api/profile/rename", {
+      method: "POST",
+      body: JSON.stringify({ new_username: newUsername, password }),
+    });
+    document.getElementById("welcome-user").textContent = `Logado como: ${data.username}${isAdmin ? " (ADMIN)" : ""}`;
+    msg.textContent = "Nome atualizado com sucesso.";
+    await loadProfile();
+  } catch (err) {
+    msg.textContent = `Erro: ${err.message}`;
+  }
+}
+
+async function onProfileAvatar() {
+  const msg = document.getElementById("profile-msg");
+  const file = document.getElementById("profile-avatar-file")?.files?.[0];
+  if (!file) {
+    msg.textContent = "Escolha uma imagem.";
+    return;
+  }
+  msg.textContent = "Enviando foto...";
+  try {
+    const fd = new FormData();
+    fd.append("avatar", file);
+    const data = await api("/api/profile/avatar", { method: "POST", body: fd, headers: {} });
+    document.getElementById("profile-avatar-preview").src = data.avatar_url;
+    msg.textContent = "Foto atualizada.";
+  } catch (err) {
+    msg.textContent = `Erro: ${err.message}`;
+  }
+}
+
+function renderUsers(items) {
+  const list = document.getElementById("social-users-list");
+  if (!list) return;
+  if (!items.length) {
+    list.innerHTML = "<div class=\"ai-empty\">Sem outros usuarios.</div>";
+    return;
+  }
+  list.innerHTML = items.map((u) => `
+    <button class="social-user-item${selectedPeer === u.username ? " active" : ""}" data-peer="${escapeHtml(u.username)}" type="button">
+      <span>${escapeHtml(u.username)}</span>
+      <small>${u.online ? "online" : "offline"}</small>
+    </button>`).join("");
+
+  list.querySelectorAll("[data-peer]").forEach((b) => {
+    b.addEventListener("click", async () => {
+      selectedPeer = b.dataset.peer;
+      document.getElementById("social-chat-title").textContent = `Chat com ${selectedPeer}`;
+      await loadUsers();
+      await loadMessages();
+    });
+  });
+}
+
+async function loadUsers() {
+  try {
+    const data = await api("/api/users", { method: "GET", headers: {} });
+    renderUsers(data.items || []);
+  } catch {}
+}
+
+function renderMessages(items) {
+  const box = document.getElementById("social-messages");
+  if (!box) return;
+  if (!selectedPeer) { box.innerHTML = "<div class=\"ai-empty\">Escolha um usuario.</div>"; return; }
+  if (!items.length) { box.innerHTML = "<div class=\"ai-empty\">Sem mensagens ainda.</div>"; return; }
+
+  box.innerHTML = items.map((m) => {
+    const mine = m.sender !== selectedPeer;
+    const text = m.message_text ? `<div>${escapeHtml(m.message_text)}</div>` : "";
+    const image = m.message_type === "image" && m.file_url ? `<img class=\"social-image\" src=\"${escapeHtml(m.file_url)}\" alt=\"imagem\" />` : "";
+    const audio = m.message_type === "audio" && m.file_url ? `<audio controls src=\"${escapeHtml(m.file_url)}\"></audio>` : "";
+    return `<div class="social-msg ${mine ? "mine" : "peer"}">${text}${image}${audio}<small>${escapeHtml(m.created_at || "")}</small></div>`;
+  }).join("");
+  box.scrollTop = box.scrollHeight;
+}
+
+async function loadMessages() {
+  if (!selectedPeer) return;
+  try {
+    const data = await api(`/api/chat/messages?with=${encodeURIComponent(selectedPeer)}&limit=200`, { method: "GET", headers: {} });
+    renderMessages(data.items || []);
+  } catch {}
+}
+
+async function onSocialSend() {
+  if (!selectedPeer) return;
+  const text = document.getElementById("social-text").value.trim();
+  const image = document.getElementById("social-image")?.files?.[0];
+  const audio = document.getElementById("social-audio")?.files?.[0];
+  if (!text && !image && !audio) return;
+
+  const fd = new FormData();
+  fd.append("to", selectedPeer);
+  if (text) fd.append("message", text);
+  if (image) fd.append("image", image);
+  if (audio) fd.append("audio", audio);
+
+  try {
+    await api("/api/chat/send", { method: "POST", body: fd, headers: {} });
+    document.getElementById("social-text").value = "";
+    if (document.getElementById("social-image")) document.getElementById("social-image").value = "";
+    if (document.getElementById("social-audio")) document.getElementById("social-audio").value = "";
+    await loadMessages();
+  } catch (err) {
+    alert(`Erro ao enviar: ${err.message}`);
+  }
+}
+
+function startSocialPolling() {
+  if (socialTimer) clearInterval(socialTimer);
+  socialTimer = setInterval(async () => {
+    await loadUsers();
+    await loadMessages();
+  }, 5000);
+}
+
 function bindEvents() {
   document.getElementById("btn-login-tab").addEventListener("click", () => switchAuthTab(true));
   document.getElementById("btn-register-tab").addEventListener("click", () => switchAuthTab(false));
@@ -673,6 +847,25 @@ function bindEvents() {
   document.getElementById("cert-btn").addEventListener("click", onCerts);
   document.getElementById("pwd-btn").addEventListener("click", onPwnedPassword);
 
+  document.getElementById("cisa-btn").addEventListener("click", onCisaKev);
+  document.getElementById("urlhaus-btn").addEventListener("click", onUrlhaus);
+  document.getElementById("sec-btn").addEventListener("click", onSecurityHeaders);
+
+  document.getElementById("profile-rename-btn").addEventListener("click", onProfileRename);
+  document.getElementById("profile-avatar-btn").addEventListener("click", onProfileAvatar);
+
+  document.getElementById("social-refresh-users").addEventListener("click", async () => {
+    await loadUsers();
+    await loadMessages();
+  });
+  document.getElementById("social-send").addEventListener("click", onSocialSend);
+  document.getElementById("social-text").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      onSocialSend();
+    }
+  });
+
   document.getElementById("ai-ask-btn").addEventListener("click", onAiAsk);
   document.getElementById("ai-new-chat-btn").addEventListener("click", createNewChat);
   document.getElementById("ai-refresh-btn").addEventListener("click", async () => {
@@ -698,6 +891,9 @@ function boot() {
 }
 
 document.addEventListener("DOMContentLoaded", boot);
+
+
+
 
 
 

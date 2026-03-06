@@ -59,6 +59,9 @@
         <button class="topic-btn" data-topic="geo">Geo & Mapa</button>
         <button class="topic-btn" data-topic="intel">Threat Intel</button>
         <button class="topic-btn" data-topic="vuln">Vulnerabilidades</button>
+        <button class="topic-btn" data-topic="cyber">Cyber APIs</button>
+        <button class="topic-btn" data-topic="profile">Perfil</button>
+        <button class="topic-btn" data-topic="social">Mensagens</button>
         <button class="topic-btn" data-topic="ai">Nemo IA</button>
       </div>
 
@@ -182,6 +185,79 @@
         </div>
       </section>
 
+
+      <section id="topic-cyber" class="topic-panel">
+        <h3 class="topic-title">Topico: Cyber APIs (sem key)</h3>
+        <div class="grid">
+          <article class="card">
+            <h3>CISA KEV (exploradas ativamente)</h3>
+            <button id="cisa-btn" class="btn-danger" type="button">Carregar KEV</button>
+            <pre id="cisa-output" class="output"></pre>
+          </article>
+          <article class="card">
+            <h3>URLhaus Recent</h3>
+            <button id="urlhaus-btn" class="btn-danger" type="button">Carregar URLs maliciosas</button>
+            <pre id="urlhaus-output" class="output"></pre>
+          </article>
+          <article class="card">
+            <h3>Security Headers</h3>
+            <label for="sec-domain">Dominio</label>
+            <input id="sec-domain" placeholder="example.com" />
+            <button id="sec-btn" class="btn-danger" type="button">Analisar headers</button>
+            <pre id="sec-output" class="output"></pre>
+          </article>
+        </div>
+      </section>
+
+      <section id="topic-profile" class="topic-panel">
+        <h3 class="topic-title">Topico: Perfil do Usuario</h3>
+        <div class="grid">
+          <article class="card">
+            <h3>Seu perfil</h3>
+            <div class="profile-box">
+              <img id="profile-avatar-preview" class="profile-avatar" alt="Avatar" />
+              <div>
+                <div id="profile-current-name" class="small"></div>
+                <label for="profile-avatar-file">Nova foto</label>
+                <input id="profile-avatar-file" type="file" accept="image/*" />
+                <button id="profile-avatar-btn" class="btn-danger" type="button">Salvar foto</button>
+              </div>
+            </div>
+          </article>
+          <article class="card">
+            <h3>Trocar nome de usuario</h3>
+            <p class="small">Por seguranca, informe sua senha para trocar o nome.</p>
+            <label for="profile-new-username">Novo nome</label>
+            <input id="profile-new-username" placeholder="novo_usuario" />
+            <label for="profile-password-confirm">Senha atual</label>
+            <input id="profile-password-confirm" type="password" placeholder="Digite sua senha" />
+            <button id="profile-rename-btn" class="btn-danger" type="button">Atualizar nome</button>
+            <p id="profile-msg" class="message"></p>
+          </article>
+        </div>
+      </section>
+
+      <section id="topic-social" class="topic-panel">
+        <h3 class="topic-title">Topico: Mensagens entre Usuarios</h3>
+        <div class="social-shell">
+          <aside class="social-users card">
+            <h3>Usuarios</h3>
+            <button id="social-refresh-users" class="btn-outline" type="button">Atualizar</button>
+            <div id="social-users-list" class="social-users-list"></div>
+          </aside>
+          <article class="social-chat card">
+            <h3 id="social-chat-title">Selecione um usuario</h3>
+            <div id="social-messages" class="social-messages"></div>
+            <div class="social-composer">
+              <input id="social-text" placeholder="Digite uma mensagem" />
+              <input id="social-image" type="file" accept="image/*" />
+              <input id="social-audio" type="file" accept="audio/*" />
+              <button id="social-send" class="btn-danger" type="button">Enviar</button>
+            </div>
+          </article>
+        </div>
+      </section>
+
       <section id="topic-ai" class="topic-panel">
         <h3 class="topic-title">Topico: Nemo IA</h3>
         <section class="nemo-ai-shell">
@@ -212,6 +288,10 @@
   <script src="/static/app.js"></script>
 </body>
 </html>
+
+
+
+
 
 
 
