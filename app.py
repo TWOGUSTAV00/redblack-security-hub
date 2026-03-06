@@ -263,6 +263,38 @@ def get_latest_conversation_id(username):
     return row["id"] if row else None
 
 
+def compact_text(text, limit):
+    cleaned = " ".join((text or "").split())
+    if len(cleaned) <= limit:
+        return cleaned
+    return cleaned[: max(0, limit - 3)] + "..."
+
+
+def build_local_answer(question, image_text, context_web):
+    parts = [
+        "Estou sem acesso ao provedor externo agora, mas sigo te ajudando.",
+        f"Pergunta: {question}",
+    ]
+    if image_text:
+        parts.append(f"Texto detectado da imagem: {compact_text(image_text, 450)}")
+    if context_web and context_web != "Sem contexto web adicional.":
+        parts.append(f"Contexto web util: {compact_text(context_web, 450)}")
+    parts.append(
+        "Se quiser resposta mais profunda (codigo completo, arquitetura ou debug), "
+        "mande linguagem + objetivo + erro atual."
+    )
+    return "\n\n".join(parts)
+
+
+def query_pollinations(prompt):
+    # O endpoint recebe prompt na URL; manter curto evita falha por URL longa.
+    safe_prompt = compact_text(prompt, 1400)
+    url = f"https://text.pollinations.ai/{quote(safe_prompt)}"
+    resp = requests.get(url, timeout=20)
+    resp.raise_for_status()
+    return (resp.text or "").strip()
+
+
 def set_user_active(username):
     now_ts = int(time.time())
     conn = db_conn()
@@ -1104,10 +1136,10 @@ def ai_ask():
     else:
         conversation_id = create_ai_conversation(user, question[:48])
 
-    image_text = (data.get("image_text") or "").strip()
+    image_text = compact_text((data.get("image_text") or "").strip(), 1200)
     composed_question = question
     if image_text:
-        composed_question = f"Pergunta do usuario: {question}\n\nTexto extraido da imagem:\n{image_text[:6000]}"
+        composed_question = f"Pergunta do usuario: {question}\n\nTexto extraido da imagem:\n{image_text}"
 
     save_ai_message(user, conversation_id, "user", question)
     record_access("ai_ask", user, question[:120])
@@ -1132,6 +1164,7 @@ def ai_ask():
         pass
 
     context_web = "\n".join(web_bits) if web_bits else "Sem contexto web adicional."
+    context_web = compact_text(context_web, 700)
 
     prompt = (
         "Voce e Nemo IA. Responda em portugues, com alta precisao tecnica, de forma direta. "
@@ -1142,19 +1175,17 @@ def ai_ask():
     )
 
     try:
-        url = f"https://text.pollinations.ai/{quote(prompt)}"
-        r = requests.get(url, timeout=10)
-        r.raise_for_status()
-        answer = (r.text or "").strip()
+        answer = query_pollinations(prompt)
         if answer:
-            save_ai_message(user, conversation_id, "assistant", answer[:3500], "Pollinations AI", "web_lookup")
-            return jsonify({"answer": answer[:3500], "source": "Pollinations AI", "conversation_id": conversation_id})
+            clean_answer = compact_text(answer, 3500)
+            save_ai_message(user, conversation_id, "assistant", clean_answer, "Pollinations AI", "web_lookup")
+            return jsonify({"answer": clean_answer, "source": "Pollinations AI", "conversation_id": conversation_id})
     except requests.RequestException:
         pass
 
-    fallback = "Nao consegui gerar resposta no momento. Tente reformular sua pergunta."
-    save_ai_message(user, conversation_id, "assistant", fallback, "Fallback", "none")
-    return jsonify({"answer": fallback, "source": "Fallback", "conversation_id": conversation_id})
+    fallback = build_local_answer(question, image_text, context_web)
+    save_ai_message(user, conversation_id, "assistant", fallback, "Nemo Local Fallback", "local")
+    return jsonify({"answer": fallback, "source": "Nemo Local Fallback", "conversation_id": conversation_id})
 
 
 @app.errorhandler(requests.RequestException)
@@ -1174,6 +1205,10 @@ if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=False)
 else:
     init_db()
+
+
+
+
 
 
 
