@@ -243,6 +243,54 @@ def init_db():
         """
     )
 
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS chat_groups (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            created_by TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS chat_group_members (
+            group_id INTEGER NOT NULL,
+            username TEXT NOT NULL,
+            is_admin INTEGER NOT NULL DEFAULT 0,
+            joined_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (group_id, username)
+        )
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS chat_group_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            group_id INTEGER NOT NULL,
+            sender TEXT NOT NULL,
+            message_type TEXT NOT NULL,
+            message_text TEXT,
+            file_path TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS chat_typing (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sender TEXT NOT NULL,
+            receiver TEXT NOT NULL,
+            expires_at INTEGER NOT NULL
+        )
+        """
+    )
     ensure_knowledge_base_seed(conn)
     conn.commit()
 
@@ -770,6 +818,11 @@ def profile_rename():
     conn.execute("UPDATE active_sessions SET username = ? WHERE username = ?", (new_username, user))
     conn.execute("UPDATE chat_messages SET sender = ? WHERE sender = ?", (new_username, user))
     conn.execute("UPDATE chat_messages SET receiver = ? WHERE receiver = ?", (new_username, user))
+    conn.execute("UPDATE chat_groups SET created_by = ? WHERE created_by = ?", (new_username, user))
+    conn.execute("UPDATE chat_group_members SET username = ? WHERE username = ?", (new_username, user))
+    conn.execute("UPDATE chat_group_messages SET sender = ? WHERE sender = ?", (new_username, user))
+    conn.execute("UPDATE chat_typing SET sender = ? WHERE sender = ?", (new_username, user))
+    conn.execute("UPDATE chat_typing SET receiver = ? WHERE receiver = ?", (new_username, user))
     conn.commit()
     conn.close()
 
@@ -902,6 +955,251 @@ def chat_send():
     conn.close()
 
     return jsonify({"ok": True})
+
+
+@app.delete("/api/chat/messages")
+def chat_messages_delete_conversation():
+    user, err = require_auth()
+    if err:
+        return err
+
+    peer = (request.args.get("with") or "").strip()
+    if not valid_username(peer):
+        return jsonify({"error": "Usuario alvo invalido"}), 400
+
+    conn = db_conn()
+    conn.execute(
+        "DELETE FROM chat_messages WHERE (sender = ? AND receiver = ?) OR (sender = ? AND receiver = ?)",
+        (user, peer, peer, user),
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.get("/api/chat/groups")
+def chat_groups_list():
+    user, err = require_auth()
+    if err:
+        return err
+
+    conn = db_conn()
+    rows = conn.execute(
+        """
+        SELECT g.id, g.name, g.created_by, g.created_at
+        FROM chat_groups g
+        JOIN chat_group_members m ON m.group_id = g.id
+        WHERE m.username = ?
+        ORDER BY g.id DESC
+        """
+        , (user,),
+    ).fetchall()
+    conn.close()
+    return jsonify({"count": len(rows), "items": [dict(r) for r in rows]})
+
+
+@app.post("/api/chat/groups")
+def chat_group_create():
+    user, err = require_auth()
+    if err:
+        return err
+
+    data = request.get_json(silent=True) or {}
+    name = (data.get("name") or "").strip()
+    if len(name) < 3:
+        return jsonify({"error": "Nome do grupo muito curto"}), 400
+
+    members = data.get("members") or []
+    valid_members = []
+    for m in members:
+        mname = (str(m) or "").strip()
+        if valid_username(mname) and mname != user:
+            valid_members.append(mname)
+
+    conn = db_conn()
+    cur = conn.execute("INSERT INTO chat_groups (name, created_by) VALUES (?, ?)", (name[:80], user))
+    gid = cur.lastrowid
+    conn.execute(
+        "INSERT INTO chat_group_members (group_id, username, is_admin) VALUES (?, ?, 1)",
+        (gid, user),
+    )
+    for m in set(valid_members):
+        conn.execute(
+            "INSERT OR IGNORE INTO chat_group_members (group_id, username, is_admin) VALUES (?, ?, 0)",
+            (gid, m),
+        )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "group_id": gid})
+
+
+@app.post("/api/chat/groups/<int:group_id>/members")
+def chat_group_add_members(group_id):
+    user, err = require_auth()
+    if err:
+        return err
+
+    data = request.get_json(silent=True) or {}
+    members = data.get("members") or []
+
+    conn = db_conn()
+    admin_row = conn.execute(
+        "SELECT 1 FROM chat_group_members WHERE group_id = ? AND username = ? AND is_admin = 1",
+        (group_id, user),
+    ).fetchone()
+    if not admin_row:
+        conn.close()
+        return jsonify({"error": "Apenas admin do grupo pode adicionar membros"}), 403
+
+    added = 0
+    for m in members:
+        mname = (str(m) or "").strip()
+        if not valid_username(mname):
+            continue
+        conn.execute(
+            "INSERT OR IGNORE INTO chat_group_members (group_id, username, is_admin) VALUES (?, ?, 0)",
+            (group_id, mname),
+        )
+        added += 1
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "added": added})
+
+
+@app.get("/api/chat/groups/<int:group_id>/messages")
+def chat_group_messages_list(group_id):
+    user, err = require_auth()
+    if err:
+        return err
+
+    try:
+        limit = max(20, min(300, int(request.args.get("limit", "120"))))
+    except ValueError:
+        limit = 120
+
+    conn = db_conn()
+    member = conn.execute(
+        "SELECT 1 FROM chat_group_members WHERE group_id = ? AND username = ?",
+        (group_id, user),
+    ).fetchone()
+    if not member:
+        conn.close()
+        return jsonify({"error": "Voce nao participa deste grupo"}), 403
+
+    rows = conn.execute(
+        """
+        SELECT id, group_id, sender, message_type, message_text, file_path, created_at
+        FROM chat_group_messages
+        WHERE group_id = ?
+        ORDER BY id DESC
+        LIMIT ?
+        """
+        , (group_id, limit),
+    ).fetchall()
+    conn.close()
+
+    items = []
+    for r in reversed(rows):
+        item = dict(r)
+        item["file_url"] = to_public_file_url(item.get("file_path")) if item.get("file_path") else None
+        items.append(item)
+    return jsonify({"count": len(items), "items": items})
+
+
+@app.post("/api/chat/groups/<int:group_id>/send")
+def chat_group_send(group_id):
+    user, err = require_auth()
+    if err:
+        return err
+
+    message_text = (request.form.get("message") or "").strip()
+    image = request.files.get("image")
+    audio = request.files.get("audio")
+
+    conn = db_conn()
+    member = conn.execute(
+        "SELECT 1 FROM chat_group_members WHERE group_id = ? AND username = ?",
+        (group_id, user),
+    ).fetchone()
+    if not member:
+        conn.close()
+        return jsonify({"error": "Voce nao participa deste grupo"}), 403
+
+    message_type = "text"
+    file_path = None
+    if image and image.filename:
+        file_path = save_uploaded_file(image, CHAT_DIR, ALLOWED_IMAGE_EXT)
+        if not file_path:
+            conn.close()
+            return jsonify({"error": "Imagem invalida"}), 400
+        message_type = "image"
+    elif audio and audio.filename:
+        file_path = save_uploaded_file(audio, CHAT_DIR, ALLOWED_AUDIO_EXT)
+        if not file_path:
+            conn.close()
+            return jsonify({"error": "Audio invalido"}), 400
+        message_type = "audio"
+
+    if not message_text and not file_path:
+        conn.close()
+        return jsonify({"error": "Mensagem vazia"}), 400
+
+    conn.execute(
+        "INSERT INTO chat_group_messages (group_id, sender, message_type, message_text, file_path) VALUES (?, ?, ?, ?, ?)",
+        (group_id, user, message_type, message_text[:4000], file_path),
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.post("/api/chat/typing")
+def chat_typing_set():
+    user, err = require_auth()
+    if err:
+        return err
+
+    data = request.get_json(silent=True) or {}
+    receiver = (data.get("receiver") or "").strip()
+    is_typing = bool(data.get("is_typing", True))
+    if not valid_username(receiver):
+        return jsonify({"error": "Destino invalido"}), 400
+
+    conn = db_conn()
+    conn.execute(
+        "DELETE FROM chat_typing WHERE sender = ? AND receiver = ?",
+        (user, receiver),
+    )
+    if is_typing:
+        conn.execute(
+            "INSERT INTO chat_typing (sender, receiver, expires_at) VALUES (?, ?, ?)",
+            (user, receiver, int(time.time()) + 8),
+        )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.get("/api/chat/typing")
+def chat_typing_get():
+    user, err = require_auth()
+    if err:
+        return err
+
+    peer = (request.args.get("with") or "").strip()
+    if not valid_username(peer):
+        return jsonify({"error": "Usuario alvo invalido"}), 400
+
+    now = int(time.time())
+    conn = db_conn()
+    conn.execute("DELETE FROM chat_typing WHERE expires_at < ?", (now,))
+    rows = conn.execute(
+        "SELECT sender FROM chat_typing WHERE receiver = ? AND sender = ? AND expires_at >= ?",
+        (user, peer, now),
+    ).fetchall()
+    conn.commit()
+    conn.close()
+    return jsonify({"typing": len(rows) > 0})
 
 
 @app.get("/api/admin/audit")
@@ -1699,6 +1997,7 @@ if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=False)
 else:
     init_db()
+
 
 
 

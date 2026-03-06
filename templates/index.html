@@ -244,15 +244,32 @@
             <h3>Usuarios</h3>
             <button id="social-refresh-users" class="btn-outline" type="button">Atualizar</button>
             <div id="social-users-list" class="social-users-list"></div>
+
+            <hr class="social-sep" />
+            <h3>Grupos</h3>
+            <input id="group-name" placeholder="Nome do grupo" />
+            <input id="group-members" placeholder="Membros (user1,user2)" />
+            <button id="group-create-btn" class="btn-danger" type="button">Criar grupo</button>
+            <button id="group-refresh-btn" class="btn-outline" type="button">Atualizar grupos</button>
+            <div id="social-groups-list" class="social-users-list"></div>
           </aside>
           <article class="social-chat card">
-            <h3 id="social-chat-title">Selecione um usuario</h3>
+            <h3 id="social-chat-title">Selecione um usuario ou grupo</h3>
+            <div id="social-typing" class="small"></div>
             <div id="social-messages" class="social-messages"></div>
             <div class="social-composer">
               <input id="social-text" placeholder="Digite uma mensagem" />
               <input id="social-image" type="file" accept="image/*" />
               <input id="social-audio" type="file" accept="audio/*" />
-              <button id="social-send" class="btn-danger" type="button">Enviar</button>
+              <div class="social-audio-row">
+                <button id="social-rec-start" class="btn-outline" type="button">Gravar audio</button>
+                <button id="social-rec-stop" class="btn-outline" type="button">Parar</button>
+              </div>
+              <div class="social-actions-row">
+                <button id="social-send" class="btn-danger" type="button">Enviar</button>
+                <button id="social-delete-conv" class="btn-outline" type="button">Excluir conversa</button>
+              </div>
+              <div id="social-upload-progress" class="small"></div>
             </div>
           </article>
         </div>
@@ -288,6 +305,7 @@
   <script src="/static/app.js"></script>
 </body>
 </html>
+
 
 
 

@@ -687,3 +687,27 @@ main {
     grid-template-columns: 1fr;
   }
 }
+
+.social-sep {
+  border: 0;
+  border-top: 1px solid #2e2e2e;
+  margin: 12px 0;
+}
+
+.social-audio-row,
+.social-actions-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+#social-upload-progress {
+  min-height: 18px;
+  color: #f0c8d1;
+}
+
+#social-typing {
+  min-height: 18px;
+  color: #d9b3bc;
+  margin-bottom: 8px;
+}

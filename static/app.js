@@ -7,6 +7,10 @@ let currentConversationId = null;
 let aiBusy = false;
 let selectedPeer = null;
 let socialTimer = null;
+let selectedGroupId = null;
+let mediaRecorder = null;
+let recordedAudioBlob = null;
+let typingTimer = null;
 
 function output(id, value) {
   const el = document.getElementById(id);
@@ -136,7 +140,7 @@ function setTopic(name) {
   });
   if (name === "geo" && map) setTimeout(() => map.invalidateSize(), 60);
   if (name === "profile") loadProfile();
-  if (name === "social") { loadUsers(); loadMessages(); }
+  if (name === "social") { loadUsers(); loadGroups(); loadMessages(); }
 }
 
 async function startHeartbeat() {
@@ -404,6 +408,7 @@ function showDashboard(user, adminFlag) {
   loadConversations().then(loadAiHistory);
   loadProfile();
   loadUsers();
+  loadGroups();
   startHeartbeat();
   startSocialPolling();
 }
@@ -743,16 +748,45 @@ function renderUsers(items) {
     return;
   }
   list.innerHTML = items.map((u) => `
-    <button class="social-user-item${selectedPeer === u.username ? " active" : ""}" data-peer="${escapeHtml(u.username)}" type="button">
+    <button class="social-user-item${selectedPeer === u.username && !selectedGroupId ? " active" : ""}" data-peer="${escapeHtml(u.username)}" type="button">
       <span>${escapeHtml(u.username)}</span>
       <small>${u.online ? "online" : "offline"}</small>
     </button>`).join("");
 
   list.querySelectorAll("[data-peer]").forEach((b) => {
     b.addEventListener("click", async () => {
+      selectedGroupId = null;
       selectedPeer = b.dataset.peer;
       document.getElementById("social-chat-title").textContent = `Chat com ${selectedPeer}`;
       await loadUsers();
+      await loadGroups();
+      await loadMessages();
+      await loadTyping();
+    });
+  });
+}
+
+function renderGroups(items) {
+  const list = document.getElementById("social-groups-list");
+  if (!list) return;
+  if (!items.length) {
+    list.innerHTML = "<div class=\"ai-empty\">Sem grupos.</div>";
+    return;
+  }
+  list.innerHTML = items.map((g) => `
+    <button class="social-user-item${selectedGroupId === Number(g.id) ? " active" : ""}" data-group-id="${g.id}" type="button">
+      <span>${escapeHtml(g.name)}</span>
+      <small>grupo</small>
+    </button>`).join("");
+
+  list.querySelectorAll("[data-group-id]").forEach((b) => {
+    b.addEventListener("click", async () => {
+      selectedPeer = null;
+      selectedGroupId = Number(b.dataset.groupId);
+      document.getElementById("social-chat-title").textContent = `Grupo #${selectedGroupId}`;
+      document.getElementById("social-typing").textContent = "";
+      await loadUsers();
+      await loadGroups();
       await loadMessages();
     });
   });
@@ -765,59 +799,173 @@ async function loadUsers() {
   } catch {}
 }
 
+async function loadGroups() {
+  try {
+    const data = await api("/api/chat/groups", { method: "GET", headers: {} });
+    renderGroups(data.items || []);
+  } catch {}
+}
+
 function renderMessages(items) {
   const box = document.getElementById("social-messages");
   if (!box) return;
-  if (!selectedPeer) { box.innerHTML = "<div class=\"ai-empty\">Escolha um usuario.</div>"; return; }
-  if (!items.length) { box.innerHTML = "<div class=\"ai-empty\">Sem mensagens ainda.</div>"; return; }
+  if (!selectedPeer && !selectedGroupId) {
+    box.innerHTML = "<div class=\"ai-empty\">Escolha um usuario ou grupo.</div>";
+    return;
+  }
+  if (!items.length) {
+    box.innerHTML = "<div class=\"ai-empty\">Sem mensagens ainda.</div>";
+    return;
+  }
 
   box.innerHTML = items.map((m) => {
-    const mine = m.sender !== selectedPeer;
+    const mine = selectedGroupId ? (m.sender !== (document.getElementById("welcome-user").textContent.match(/Logado como: ([^\s]+)/)?.[1] || "")) : (m.sender !== selectedPeer);
+    const senderLabel = selectedGroupId ? `<strong>${escapeHtml(m.sender || "")}</strong><br/>` : "";
     const text = m.message_text ? `<div>${escapeHtml(m.message_text)}</div>` : "";
     const image = m.message_type === "image" && m.file_url ? `<img class=\"social-image\" src=\"${escapeHtml(m.file_url)}\" alt=\"imagem\" />` : "";
     const audio = m.message_type === "audio" && m.file_url ? `<audio controls src=\"${escapeHtml(m.file_url)}\"></audio>` : "";
-    return `<div class="social-msg ${mine ? "mine" : "peer"}">${text}${image}${audio}<small>${escapeHtml(m.created_at || "")}</small></div>`;
+    return `<div class="social-msg ${mine ? "mine" : "peer"}">${senderLabel}${text}${image}${audio}<small>${escapeHtml(m.created_at || "")}</small></div>`;
   }).join("");
   box.scrollTop = box.scrollHeight;
 }
 
 async function loadMessages() {
-  if (!selectedPeer) return;
   try {
+    if (selectedGroupId) {
+      const data = await api(`/api/chat/groups/${selectedGroupId}/messages?limit=200`, { method: "GET", headers: {} });
+      renderMessages(data.items || []);
+      return;
+    }
+    if (!selectedPeer) return;
     const data = await api(`/api/chat/messages?with=${encodeURIComponent(selectedPeer)}&limit=200`, { method: "GET", headers: {} });
     renderMessages(data.items || []);
   } catch {}
 }
 
+async function loadTyping() {
+  if (!selectedPeer || selectedGroupId) return;
+  try {
+    const data = await api(`/api/chat/typing?with=${encodeURIComponent(selectedPeer)}`, { method: "GET", headers: {} });
+    document.getElementById("social-typing").textContent = data.typing ? `${selectedPeer} está digitando...` : "";
+  } catch {}
+}
+
+async function setTypingState(isTyping) {
+  if (!selectedPeer || selectedGroupId) return;
+  await api("/api/chat/typing", {
+    method: "POST",
+    body: JSON.stringify({ receiver: selectedPeer, is_typing: isTyping }),
+  }).catch(() => null);
+}
+
+function sendWithProgress(url, formData) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const progressEl = document.getElementById("social-upload-progress");
+    xhr.open("POST", url, true);
+    xhr.withCredentials = true;
+    xhr.upload.onprogress = (evt) => {
+      if (!progressEl) return;
+      if (!evt.lengthComputable) {
+        progressEl.textContent = "Enviando...";
+        return;
+      }
+      const pct = Math.round((evt.loaded / evt.total) * 100);
+      progressEl.textContent = `Upload: ${pct}%`;
+    };
+    xhr.onload = () => {
+      if (progressEl) progressEl.textContent = "";
+      let data = {};
+      try { data = JSON.parse(xhr.responseText || "{}"); } catch {}
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data);
+      else reject(new Error(data.error || `Falha HTTP ${xhr.status}`));
+    };
+    xhr.onerror = () => {
+      if (progressEl) progressEl.textContent = "";
+      reject(new Error("Falha de rede no upload"));
+    };
+    xhr.send(formData);
+  });
+}
+
 async function onSocialSend() {
-  if (!selectedPeer) return;
+  if (!selectedPeer && !selectedGroupId) return;
   const text = document.getElementById("social-text").value.trim();
   const image = document.getElementById("social-image")?.files?.[0];
-  const audio = document.getElementById("social-audio")?.files?.[0];
+  const audioInput = document.getElementById("social-audio")?.files?.[0];
+  const audio = audioInput || recordedAudioBlob;
   if (!text && !image && !audio) return;
 
   const fd = new FormData();
-  fd.append("to", selectedPeer);
   if (text) fd.append("message", text);
   if (image) fd.append("image", image);
-  if (audio) fd.append("audio", audio);
+  if (audio) fd.append("audio", audio, audio.name || "recorded.webm");
 
   try {
-    await api("/api/chat/send", { method: "POST", body: fd, headers: {} });
+    if (selectedGroupId) {
+      await sendWithProgress(`/api/chat/groups/${selectedGroupId}/send`, fd);
+    } else {
+      fd.append("to", selectedPeer);
+      await sendWithProgress("/api/chat/send", fd);
+      await setTypingState(false);
+    }
     document.getElementById("social-text").value = "";
     if (document.getElementById("social-image")) document.getElementById("social-image").value = "";
     if (document.getElementById("social-audio")) document.getElementById("social-audio").value = "";
+    recordedAudioBlob = null;
     await loadMessages();
   } catch (err) {
     alert(`Erro ao enviar: ${err.message}`);
   }
 }
 
+async function onDeleteConversation() {
+  if (!selectedPeer || selectedGroupId) return;
+  await api(`/api/chat/messages?with=${encodeURIComponent(selectedPeer)}`, { method: "DELETE", headers: {} });
+  await loadMessages();
+}
+
+async function onCreateGroup() {
+  const name = document.getElementById("group-name").value.trim();
+  const membersRaw = document.getElementById("group-members").value.trim();
+  const members = membersRaw ? membersRaw.split(",").map((x) => x.trim()).filter(Boolean) : [];
+  await api("/api/chat/groups", {
+    method: "POST",
+    body: JSON.stringify({ name, members }),
+  });
+  document.getElementById("group-name").value = "";
+  document.getElementById("group-members").value = "";
+  await loadGroups();
+}
+
+async function startRecording() {
+  if (!navigator.mediaDevices?.getUserMedia) return;
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const chunks = [];
+  mediaRecorder = new MediaRecorder(stream);
+  mediaRecorder.ondataavailable = (e) => { if (e.data?.size) chunks.push(e.data); };
+  mediaRecorder.onstop = () => {
+    const blob = new Blob(chunks, { type: "audio/webm" });
+    blob.name = `audio-${Date.now()}.webm`;
+    recordedAudioBlob = blob;
+    const progressEl = document.getElementById("social-upload-progress");
+    if (progressEl) progressEl.textContent = "Audio gravado e pronto para enviar.";
+    stream.getTracks().forEach((t) => t.stop());
+  };
+  mediaRecorder.start();
+}
+
+function stopRecording() {
+  if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
+}
+
 function startSocialPolling() {
   if (socialTimer) clearInterval(socialTimer);
   socialTimer = setInterval(async () => {
     await loadUsers();
+    await loadGroups();
     await loadMessages();
+    await loadTyping();
   }, 5000);
 }
 
@@ -856,9 +1004,22 @@ function bindEvents() {
 
   document.getElementById("social-refresh-users").addEventListener("click", async () => {
     await loadUsers();
+    await loadGroups();
     await loadMessages();
   });
+  document.getElementById("group-refresh-btn").addEventListener("click", loadGroups);
+  document.getElementById("group-create-btn").addEventListener("click", onCreateGroup);
   document.getElementById("social-send").addEventListener("click", onSocialSend);
+  document.getElementById("social-delete-conv").addEventListener("click", onDeleteConversation);
+  document.getElementById("social-rec-start").addEventListener("click", startRecording);
+  document.getElementById("social-rec-stop").addEventListener("click", stopRecording);
+  document.getElementById("social-text").addEventListener("input", async () => {
+    if (selectedPeer && !selectedGroupId) {
+      await setTypingState(true);
+      if (typingTimer) clearTimeout(typingTimer);
+      typingTimer = setTimeout(() => setTypingState(false), 2500);
+    }
+  });
   document.getElementById("social-text").addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -891,6 +1052,9 @@ function boot() {
 }
 
 document.addEventListener("DOMContentLoaded", boot);
+
+
+
 
 
 
