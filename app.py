@@ -31,6 +31,30 @@ login_attempts = {}
 geo_cache = {}
 
 
+NEMO_SYSTEM_PROMPT = (
+    "Voce e Nemo IA, assistente tecnico de ciberseguranca e engenharia de software. "
+    "Responda em portugues do Brasil, com alta precisao, objetividade e linguagem profissional. "
+    "Ao responder: (1) explique com clareza, (2) entregue passos acionaveis, "
+    "(3) inclua codigo completo quando solicitado, (4) sinalize riscos e boas praticas de seguranca. "
+    "Nao invente fatos; quando estiver incerto, deixe explicito e proponha validacao. "
+    "Evite textos longos sem necessidade; foque em utilidade pratica."
+)
+
+KB_SEED = [
+    ("OWASP Top 10", "A01 Broken Access Control: reforcar autorizacao por recurso, validar owner e role no backend.", "owasp,access-control"),
+    ("OWASP Top 10", "A02 Cryptographic Failures: usar HTTPS, hash de senha com algoritmo forte e rotacao de segredos.", "owasp,crypto"),
+    ("OWASP Top 10", "A03 Injection: validar entrada, usar queries parametrizadas e nunca concatenar SQL.", "owasp,injection"),
+    ("Autenticacao", "Login seguro: limitar tentativas, bloquear brute-force, usar sessao httpOnly e sameSite.", "auth,login,session"),
+    ("Sessao", "Sessao segura: expirar token, invalidar sessao no logout e monitorar atividade suspeita.", "session,security"),
+    ("API Security", "API robusta: validar schema, tratar erros sem expor stack trace e aplicar rate limit.", "api,backend"),
+    ("SQL Injection", "Defesa SQLi: prepared statements, principle of least privilege no banco e logs de auditoria.", "database,sqli"),
+    ("XSS", "Defesa XSS: escapar output no frontend, sanitizar HTML rico e usar Content-Security-Policy.", "frontend,xss"),
+    ("CSRF", "Defesa CSRF: tokens anti-CSRF em acoes sensiveis e validar origem/referer.", "csrf,web"),
+    ("Monitoramento", "Observabilidade: registrar eventos de login, falhas, banimentos e anomalias com timestamp.", "logs,monitoring"),
+    ("Resposta a Incidentes", "Processo: identificar, conter, erradicar, recuperar e documentar licoes aprendidas.", "incident,response"),
+    ("Seguranca de Senha", "Politica: minimo 8+ caracteres, bloquear senhas vazadas e incentivar gerenciador de senha.", "password,hibp"),
+]
+
 def db_conn():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -84,6 +108,26 @@ def ensure_users_schema(conn):
     cols = {row["name"] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
     if "is_banned" not in cols:
         conn.execute("ALTER TABLE users ADD COLUMN is_banned INTEGER NOT NULL DEFAULT 0")
+
+
+def ensure_knowledge_base_seed(conn):
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS ai_knowledge_base (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL,
+            tags TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    row = conn.execute("SELECT COUNT(*) AS c FROM ai_knowledge_base").fetchone()
+    if int(row["c"] or 0) == 0:
+        conn.executemany(
+            "INSERT INTO ai_knowledge_base (title, content, tags) VALUES (?, ?, ?)",
+            KB_SEED,
+        )
 
 
 def init_db():
@@ -174,6 +218,7 @@ def init_db():
         """
     )
 
+    ensure_knowledge_base_seed(conn)
     conn.commit()
 
     admin_pass = "gustavo270998"
@@ -264,6 +309,53 @@ def get_latest_conversation_id(username):
     conn.close()
     return row["id"] if row else None
 
+def fetch_conversation_memory(username, conversation_id, limit=10):
+    conn = db_conn()
+    rows = conn.execute(
+        """
+        SELECT role, content
+        FROM ai_messages
+        WHERE username = ? AND conversation_id = ?
+        ORDER BY id DESC
+        LIMIT ?
+        """,
+        (username, conversation_id, limit),
+    ).fetchall()
+    conn.close()
+    if not rows:
+        return "Sem memoria previa."
+
+    ordered = list(reversed(rows))
+    lines = []
+    for r in ordered:
+        role = "Usuario" if r["role"] == "user" else "Nemo IA"
+        lines.append(f"{role}: {compact_text(r['content'], 320)}")
+    return "\n".join(lines)
+
+
+def retrieve_kb_context(question, limit=4):
+    tokens = [t for t in re.findall(r"[a-zA-Z0-9_+-]+", (question or "").lower()) if len(t) >= 3]
+    if not tokens:
+        return "Sem contexto de base de conhecimento."
+
+    conn = db_conn()
+    rows = conn.execute("SELECT title, content, tags FROM ai_knowledge_base ORDER BY id DESC").fetchall()
+    conn.close()
+
+    ranked = []
+    for r in rows:
+        hay = f"{r['title']} {r['content']} {r['tags'] or ''}".lower()
+        score = sum(1 for tok in tokens if tok in hay)
+        if score > 0:
+            ranked.append((score, r))
+
+    if not ranked:
+        return "Sem contexto de base de conhecimento."
+
+    ranked.sort(key=lambda x: x[0], reverse=True)
+    top = [item[1] for item in ranked[:limit]]
+    return "\n".join([f"- {r['title']}: {compact_text(r['content'], 240)}" for r in top])
+
 
 def compact_text(text, limit):
     cleaned = " ".join((text or "").split())
@@ -309,7 +401,7 @@ def query_pollinations(prompt):
     return (resp.text or "").strip()
 
 
-def query_deepseek(prompt):
+def query_deepseek(prompt, system_prompt=None):
     if not DEEPSEEK_API_KEY:
         return ""
     payload = {
@@ -319,7 +411,7 @@ def query_deepseek(prompt):
         "messages": [
             {
                 "role": "system",
-                "content": "Voce e Nemo IA. Responda em portugues com precisao tecnica e objetividade.",
+                "content": system_prompt or NEMO_SYSTEM_PROMPT,
             },
             {"role": "user", "content": compact_text(prompt, 5000)},
         ],
@@ -1254,15 +1346,18 @@ def ai_ask():
     context_web = "\n".join(web_bits) if web_bits else "Sem contexto web adicional."
     context_web = compact_text(context_web, 700)
 
+    memory_context = compact_text(fetch_conversation_memory(user, conversation_id, limit=10), 1800)
+    kb_context = compact_text(retrieve_kb_context(question, limit=4), 1200)
+
     prompt = (
-        "Voce e Nemo IA. Responda em portugues, com alta precisao tecnica, de forma direta. "
-        "Para temas complexos, entregue explicacao + codigo completo quando fizer sentido. "
-        "Nao copie textos protegidos. Crie resposta original.\n"
+        f"Prompt do sistema:\n{NEMO_SYSTEM_PROMPT}\n\n"
+        f"Memoria recente da conversa:\n{memory_context}\n\n"
+        f"Base de conhecimento interna:\n{kb_context}\n\n"
         f"Contexto web atual:\n{context_web}\n\n"
         f"Pergunta:\n{composed_question}"
     )
     try:
-        answer = query_deepseek(prompt)
+        answer = query_deepseek(prompt, NEMO_SYSTEM_PROMPT)
         if answer:
             clean_answer = compact_text(answer, 3500)
             save_ai_message(user, conversation_id, "assistant", clean_answer, "DeepSeek", "web_lookup")
@@ -1301,6 +1396,9 @@ if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=False)
 else:
     init_db()
+
+
+
 
 
 
