@@ -272,6 +272,18 @@ def compact_text(text, limit):
     return cleaned[: max(0, limit - 3)] + "..."
 
 
+def wants_image_generation(question):
+    q = (question or "").lower()
+    has_image_term = any(word in q for word in ["imagem", "foto", "ilustracao", "arte", "logo", "wallpaper"])
+    has_generate_term = any(word in q for word in ["gere", "gerar", "crie", "criar", "faca", "faça", "produza", "desenhe"])
+    return has_image_term and has_generate_term
+
+
+def build_generated_image_url(question):
+    prompt = compact_text(question, 220)
+    return f"https://image.pollinations.ai/prompt/{quote(prompt)}?width=1024&height=1024&nologo=true&safe=true"
+
+
 def build_local_answer(question, image_text, context_web):
     parts = [
         "Estou sem acesso ao provedor externo agora, mas sigo te ajudando.",
@@ -1178,6 +1190,13 @@ def ai_ask():
 
     save_ai_message(user, conversation_id, "user", question)
     record_access("ai_ask", user, question[:120])
+
+    if wants_image_generation(question):
+        image_url = build_generated_image_url(question)
+        image_answer = f"Imagem gerada conforme pedido:\n{image_url}"
+        save_ai_message(user, conversation_id, "assistant", image_answer, "Pollinations Image", "image_generation")
+        return jsonify({"answer": image_answer, "source": "Pollinations Image", "conversation_id": conversation_id})
+
 
     web_bits = []
     try:

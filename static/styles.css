@@ -488,3 +488,15 @@ main {
     grid-template-columns: 1fr;
   }
 }
+
+.ai-image-wrap {
+  margin-top: 10px;
+}
+
+.ai-inline-image {
+  max-width: min(520px, 100%);
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid #5a2a34;
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.28);
+}

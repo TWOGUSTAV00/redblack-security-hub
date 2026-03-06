@@ -21,6 +21,34 @@ function escapeHtml(text) {
     .replaceAll("'", "&#039;");
 }
 
+function normalizeUrlToken(url) {
+  return (url || "").replace(/[),.;]+$/, "");
+}
+
+function renderAiContent(content) {
+  const raw = content || "";
+  const urlMatches = raw.match(/https?:\/\/\S+/g) || [];
+  const urls = [...new Set(urlMatches.map(normalizeUrlToken).filter(Boolean))];
+
+  let html = escapeHtml(raw).replaceAll("\n", "<br>");
+  urls.forEach((u) => {
+    const safe = escapeHtml(u);
+    html = html.replaceAll(safe, `<a href="${safe}" target="_blank" rel="noopener noreferrer">${safe}</a>`);
+  });
+
+  const imageUrls = urls.filter((u) => u.includes("image.pollinations.ai/"));
+  if (imageUrls.length) {
+    html += imageUrls
+      .map((u) => {
+        const safe = escapeHtml(u);
+        return `<div class="ai-image-wrap"><img class="ai-inline-image" src="${safe}" alt="Imagem gerada pela Nemo IA" loading="lazy" /></div>`;
+      })
+      .join("");
+  }
+
+  return html;
+}
+
 function setAiStatus(msg) {
   const el = document.getElementById("ai-status");
   if (el) el.textContent = msg || "";
@@ -197,7 +225,7 @@ function renderAiHistory(items) {
       return `
         <div class="ai-msg ${roleClass}">
           <div class="ai-role">${m.role === "user" ? "Voce" : "Nemo IA"}</div>
-          <div class="ai-content">${escapeHtml(m.content)}</div>
+          <div class="ai-content">${renderAiContent(m.content)}</div>
           ${sourceLine}
           ${delBtn}
         </div>
@@ -629,5 +657,6 @@ function boot() {
 }
 
 document.addEventListener("DOMContentLoaded", boot);
+
 
 
