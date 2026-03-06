@@ -371,6 +371,31 @@ def wants_image_generation(question):
     return has_image_term and has_generate_term
 
 
+def wants_spreadsheet_request(question):
+    q = (question or "").lower()
+    planilha_terms = ["planilha", "csv", "excel", "google sheets", "tabela", "coluna", "linhas", "listagem", "organize", "organizar"]
+    action_terms = ["crie", "criar", "monte", "gerar", "gere", "organize", "organizar", "liste", "listagem"]
+    return any(t in q for t in planilha_terms) and any(a in q for a in action_terms)
+
+
+def spreadsheet_output_rules():
+    return (
+        "Se a tarefa for planilha/listagem, responda no formato estrito abaixo, sem markdown.\n"
+        "1) TITULO: uma linha curta.\n"
+        "2) CSV: bloco com cabecalho e linhas separadas por virgula.\n"
+        "3) PASSOS: lista numerada curta (max 5).\n"
+        "Regras: nao usar **, ##, bullets markdown ou texto redundante."
+    )
+
+
+def cleanup_spreadsheet_answer(text):
+    cleaned = text or ""
+    for token in ["**", "##", "```", "`"]:
+        cleaned = cleaned.replace(token, "")
+    cleaned = cleaned.replace("- ", "")
+    return cleaned.strip()
+
+
 def build_generated_image_url(question):
     prompt = compact_text(question, 220)
     return f"{request.url_root.rstrip('/')}/api/ai/generated-image?prompt={quote(prompt)}"
@@ -1316,6 +1341,7 @@ def ai_ask():
 
     save_ai_message(user, conversation_id, "user", question)
     record_access("ai_ask", user, question[:120])
+    spreadsheet_mode = wants_spreadsheet_request(question)
 
     if wants_image_generation(question):
         image_url = build_generated_image_url(question)
@@ -1349,7 +1375,9 @@ def ai_ask():
     memory_context = compact_text(fetch_conversation_memory(user, conversation_id, limit=10), 1800)
     kb_context = compact_text(retrieve_kb_context(question, limit=4), 1200)
 
+    extra_mode = spreadsheet_output_rules() if spreadsheet_mode else ""
     prompt = (
+        f"Modo adicional:\n{extra_mode}\n\n"
         f"Prompt do sistema:\n{NEMO_SYSTEM_PROMPT}\n\n"
         f"Memoria recente da conversa:\n{memory_context}\n\n"
         f"Base de conhecimento interna:\n{kb_context}\n\n"
@@ -1360,6 +1388,8 @@ def ai_ask():
         answer = query_deepseek(prompt, NEMO_SYSTEM_PROMPT)
         if answer:
             clean_answer = compact_text(answer, 3500)
+            if spreadsheet_mode:
+                clean_answer = cleanup_spreadsheet_answer(clean_answer)
             save_ai_message(user, conversation_id, "assistant", clean_answer, "DeepSeek", "web_lookup")
             return jsonify({"answer": clean_answer, "source": "DeepSeek", "conversation_id": conversation_id})
     except requests.RequestException:
@@ -1369,6 +1399,8 @@ def ai_ask():
         answer = query_pollinations(prompt)
         if answer:
             clean_answer = compact_text(answer, 3500)
+            if spreadsheet_mode:
+                clean_answer = cleanup_spreadsheet_answer(clean_answer)
             save_ai_message(user, conversation_id, "assistant", clean_answer, "Pollinations AI", "web_lookup")
             return jsonify({"answer": clean_answer, "source": "Pollinations AI", "conversation_id": conversation_id})
     except requests.RequestException:
@@ -1396,6 +1428,8 @@ if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=False)
 else:
     init_db()
+
+
 
 
 
