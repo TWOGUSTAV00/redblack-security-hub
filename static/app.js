@@ -36,7 +36,7 @@ function renderAiContent(content) {
     html = html.replaceAll(safe, `<a href="${safe}" target="_blank" rel="noopener noreferrer">${safe}</a>`);
   });
 
-  const imageUrls = urls.filter((u) => u.includes("image.pollinations.ai/"));
+  const imageUrls = urls.filter((u) => u.includes("image.pollinations.ai/") || u.includes("/api/ai/generated-image"));
   if (imageUrls.length) {
     html += imageUrls
       .map((u) => {
@@ -657,6 +657,7 @@ function boot() {
 }
 
 document.addEventListener("DOMContentLoaded", boot);
+
 
 
 

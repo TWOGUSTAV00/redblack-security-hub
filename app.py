@@ -281,7 +281,7 @@ def wants_image_generation(question):
 
 def build_generated_image_url(question):
     prompt = compact_text(question, 220)
-    return f"https://image.pollinations.ai/prompt/{quote(prompt)}?width=1024&height=1024&nologo=true&safe=true"
+    return f"{request.url_root.rstrip('/')}/api/ai/generated-image?prompt={quote(prompt)}"
 
 
 def build_local_answer(question, image_text, context_web):
@@ -1160,6 +1160,27 @@ def ai_history_delete_one(message_id):
     return jsonify({"ok": True})
 
 
+@app.get("/api/ai/generated-image")
+def ai_generated_image():
+    _, err = require_auth()
+    if err:
+        return err
+
+    prompt = compact_text((request.args.get("prompt") or "").strip(), 220)
+    if len(prompt) < 3:
+        return jsonify({"error": "Prompt muito curto"}), 400
+
+    remote_url = f"https://image.pollinations.ai/prompt/{quote(prompt)}?width=1024&height=1024&nologo=true&safe=true"
+    r = requests.get(remote_url, timeout=35)
+    r.raise_for_status()
+
+    content_type = (r.headers.get("Content-Type") or "image/jpeg").split(";")[0].strip()
+    if not content_type.startswith("image/"):
+        return jsonify({"error": "Falha ao gerar imagem"}), 502
+
+    return Response(r.content, mimetype=content_type, headers={"Cache-Control": "no-store"})
+
+
 @app.post("/api/ai/ask")
 def ai_ask():
     user, err = require_auth()
@@ -1267,6 +1288,8 @@ if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=False)
 else:
     init_db()
+
+
 
 
 
