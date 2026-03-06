@@ -25,6 +25,35 @@ function normalizeUrlToken(url) {
   return (url || "").replace(/[),.;]+$/, "");
 }
 
+function parseCsvLikeTable(raw) {
+  const lines = (raw || "")
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l && l.includes(","));
+
+  if (lines.length < 2) return null;
+  const rows = lines.map((l) => l.split(",").map((c) => c.trim()));
+  const colCount = rows[0].length;
+  if (colCount < 2) return null;
+  if (!rows.every((r) => r.length === colCount)) return null;
+
+  const header = rows[0];
+  const body = rows.slice(1);
+  return { header, body };
+}
+
+function renderAiTable(raw) {
+  const parsed = parseCsvLikeTable(raw);
+  if (!parsed) return "";
+
+  const head = `<tr>${parsed.header.map((h) => `<th>${escapeHtml(h)}</th>`).join("")}</tr>`;
+  const body = parsed.body
+    .map((row) => `<tr>${row.map((c) => `<td>${escapeHtml(c)}</td>`).join("")}</tr>`)
+    .join("");
+
+  return `<div class="ai-table-wrap"><table class="ai-table">${head}${body}</table></div>`;
+}
+
 function renderAiContent(content) {
   const raw = content || "";
   const urlMatches = raw.match(/https?:\/\/\S+/g) || [];
@@ -45,6 +74,9 @@ function renderAiContent(content) {
       })
       .join("");
   }
+
+  const tableHtml = renderAiTable(raw);
+  if (tableHtml) html += tableHtml;
 
   return html;
 }
@@ -666,6 +698,7 @@ function boot() {
 }
 
 document.addEventListener("DOMContentLoaded", boot);
+
 
 
 
