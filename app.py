@@ -18,8 +18,8 @@ BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "app.db"
 ALLOWED_SCHEMES = {"http", "https"}
 ADMIN_USERNAME = "Nemo"
-GROQ_API_KEY = (os.environ.get("GROQ_API_KEY") or "").strip()
-GROQ_MODEL = (os.environ.get("GROQ_MODEL") or "llama-3.3-70b-versatile").strip()
+DEEPSEEK_API_KEY = (os.environ.get("DEEPSEEK_API_KEY") or "").strip()
+DEEPSEEK_MODEL = (os.environ.get("DEEPSEEK_MODEL") or "deepseek-chat").strip()
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "nemo-redblack-secret-change-me")
@@ -297,11 +297,11 @@ def query_pollinations(prompt):
     return (resp.text or "").strip()
 
 
-def query_groq(prompt):
-    if not GROQ_API_KEY:
+def query_deepseek(prompt):
+    if not DEEPSEEK_API_KEY:
         return ""
     payload = {
-        "model": GROQ_MODEL,
+        "model": DEEPSEEK_MODEL,
         "temperature": 0.2,
         "max_tokens": 900,
         "messages": [
@@ -313,13 +313,13 @@ def query_groq(prompt):
         ],
     }
     resp = requests.post(
-        "https://api.groq.com/openai/v1/chat/completions",
+        "https://api.deepseek.com/v1/chat/completions",
         headers={
-            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
             "Content-Type": "application/json",
         },
         json=payload,
-        timeout=25,
+        timeout=30,
     )
     resp.raise_for_status()
     data = resp.json()
@@ -1209,11 +1209,11 @@ def ai_ask():
         f"Pergunta:\n{composed_question}"
     )
     try:
-        answer = query_groq(prompt)
+        answer = query_deepseek(prompt)
         if answer:
             clean_answer = compact_text(answer, 3500)
-            save_ai_message(user, conversation_id, "assistant", clean_answer, "Groq", "web_lookup")
-            return jsonify({"answer": clean_answer, "source": "Groq", "conversation_id": conversation_id})
+            save_ai_message(user, conversation_id, "assistant", clean_answer, "DeepSeek", "web_lookup")
+            return jsonify({"answer": clean_answer, "source": "DeepSeek", "conversation_id": conversation_id})
     except requests.RequestException:
         pass
 
@@ -1248,6 +1248,9 @@ if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=False)
 else:
     init_db()
+
+
+
 
 
 
