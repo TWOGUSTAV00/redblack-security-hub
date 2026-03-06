@@ -18,6 +18,8 @@ BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "app.db"
 ALLOWED_SCHEMES = {"http", "https"}
 ADMIN_USERNAME = "Nemo"
+GROQ_API_KEY = (os.environ.get("GROQ_API_KEY") or "").strip()
+GROQ_MODEL = (os.environ.get("GROQ_MODEL") or "llama-3.3-70b-versatile").strip()
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "nemo-redblack-secret-change-me")
@@ -293,6 +295,39 @@ def query_pollinations(prompt):
     resp = requests.get(url, timeout=20)
     resp.raise_for_status()
     return (resp.text or "").strip()
+
+
+def query_groq(prompt):
+    if not GROQ_API_KEY:
+        return ""
+    payload = {
+        "model": GROQ_MODEL,
+        "temperature": 0.2,
+        "max_tokens": 900,
+        "messages": [
+            {
+                "role": "system",
+                "content": "Voce e Nemo IA. Responda em portugues com precisao tecnica e objetividade.",
+            },
+            {"role": "user", "content": compact_text(prompt, 5000)},
+        ],
+    }
+    resp = requests.post(
+        "https://api.groq.com/openai/v1/chat/completions",
+        headers={
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        json=payload,
+        timeout=25,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    choices = data.get("choices") or []
+    if not choices:
+        return ""
+    msg = choices[0].get("message") or {}
+    return (msg.get("content") or "").strip()
 
 
 def set_user_active(username):
@@ -1173,6 +1208,14 @@ def ai_ask():
         f"Contexto web atual:\n{context_web}\n\n"
         f"Pergunta:\n{composed_question}"
     )
+    try:
+        answer = query_groq(prompt)
+        if answer:
+            clean_answer = compact_text(answer, 3500)
+            save_ai_message(user, conversation_id, "assistant", clean_answer, "Groq", "web_lookup")
+            return jsonify({"answer": clean_answer, "source": "Groq", "conversation_id": conversation_id})
+    except requests.RequestException:
+        pass
 
     try:
         answer = query_pollinations(prompt)
@@ -1205,6 +1248,8 @@ if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=False)
 else:
     init_db()
+
+
 
 
 
