@@ -1170,15 +1170,28 @@ def ai_generated_image():
     if len(prompt) < 3:
         return jsonify({"error": "Prompt muito curto"}), 400
 
-    remote_url = f"https://image.pollinations.ai/prompt/{quote(prompt)}?width=1024&height=1024&nologo=true&safe=true"
-    r = requests.get(remote_url, timeout=35)
-    r.raise_for_status()
+    candidates = [
+        f"https://image.pollinations.ai/prompt/{quote(prompt)}?width=1024&height=1024&nologo=true&safe=true",
+        f"https://image.pollinations.ai/prompt/{quote(prompt)}?width=1024&height=1024&model=flux&nologo=true&safe=true",
+    ]
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; NemoIA/1.0)",
+        "Accept": "image/avif,image/webp,image/*,*/*;q=0.8",
+    }
+    last_error = "Falha ao gerar imagem"
 
-    content_type = (r.headers.get("Content-Type") or "image/jpeg").split(";")[0].strip()
-    if not content_type.startswith("image/"):
-        return jsonify({"error": "Falha ao gerar imagem"}), 502
+    for remote_url in candidates:
+        try:
+            r = requests.get(remote_url, timeout=45, headers=headers)
+            r.raise_for_status()
+            content_type = (r.headers.get("Content-Type") or "image/jpeg").split(";")[0].strip()
+            if content_type.startswith("image/"):
+                return Response(r.content, mimetype=content_type, headers={"Cache-Control": "no-store"})
+            last_error = f"Resposta invalida do provedor: {content_type}"
+        except requests.RequestException as exc:
+            last_error = str(exc)
 
-    return Response(r.content, mimetype=content_type, headers={"Cache-Control": "no-store"})
+    return jsonify({"error": last_error}), 502
 
 
 @app.post("/api/ai/ask")

@@ -239,6 +239,15 @@ function renderAiHistory(items) {
     });
   });
 
+
+  stream.querySelectorAll(".ai-inline-image").forEach((img) => {
+    img.addEventListener("error", () => {
+      const holder = document.createElement("div");
+      holder.className = "ai-img-error";
+      holder.textContent = "Falha ao carregar preview da imagem. Abra o link acima.";
+      img.replaceWith(holder);
+    });
+  });
   stream.scrollTop = stream.scrollHeight;
 }
 

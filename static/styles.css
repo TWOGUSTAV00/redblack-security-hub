@@ -500,3 +500,12 @@ main {
   border: 1px solid #5a2a34;
   box-shadow: 0 10px 20px rgba(0, 0, 0, 0.28);
 }
+
+.ai-img-error {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px dashed #7f3142;
+  border-radius: 8px;
+  color: #f2c9d2;
+  background: rgba(106, 22, 40, 0.16);
+}
