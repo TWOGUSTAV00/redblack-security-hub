@@ -1,4 +1,4 @@
-let isAdmin = false;
+﻿let isAdmin = false;
 let currentConversationId = null;
 let aiBusy = false;
 let selectedPeer = null;
@@ -190,7 +190,7 @@ function renderAiHistory(items) {
   const stream = document.getElementById("ai-chat-stream");
   if (!stream) return;
   if (!items.length) {
-    stream.innerHTML = '<div class="message">Chat vazio. Fa�a sua primeira pergunta.</div>';
+    stream.innerHTML = '<div class="message">Chat vazio. Faça sua primeira pergunta.</div>';
     return;
   }
   stream.innerHTML = items.map((m) => {
@@ -628,7 +628,9 @@ function bind(id, event, handler) {
 
 function bindEvents() {
   bind("btn-login-tab", "click", () => switchAuthTab(true));
-  bind("btn-register-tab", "click", () => switchAuthTab(false));\r\n  bind("goto-register", "click", () => switchAuthTab(false));\r\n  bind("goto-login", "click", () => switchAuthTab(true));
+  bind("btn-register-tab", "click", () => switchAuthTab(false));
+  bind("goto-register", "click", () => switchAuthTab(false));
+  bind("goto-login", "click", () => switchAuthTab(true));
   bind("register-form", "submit", onRegister);
   bind("login-form", "submit", onLogin);
   bind("logout-btn", "click", onLogout);
@@ -657,7 +659,15 @@ function bindEvents() {
   });
   bind("group-refresh-btn", "click", loadGroups);
   bind("group-create-btn", "click", onCreateGroup);
-  bind("chat-send", "click", onChatSend);\r\n  bind("chat-media", "change", () => {\r\n    const f = document.getElementById("chat-media")?.files?.[0];\r\n    if (f) document.getElementById("upload-status").textContent = "Arquivo pronto: " + f.name;\r\n  });\r\n  bind("chat-audio", "change", () => {\r\n    const f = document.getElementById("chat-audio")?.files?.[0];\r\n    if (f) document.getElementById("upload-status").textContent = "Audio pronto: " + f.name;\r\n  });
+  bind("chat-send", "click", onChatSend);
+  bind("chat-media", "change", () => {
+    const f = document.getElementById("chat-media")?.files?.[0];
+    if (f) document.getElementById("upload-status").textContent = "Arquivo pronto: " + f.name;
+  });
+  bind("chat-audio", "change", () => {
+    const f = document.getElementById("chat-audio")?.files?.[0];
+    if (f) document.getElementById("upload-status").textContent = "Audio pronto: " + f.name;
+  });
   bind("chat-text", "input", async () => {
     if (selectedPeer && !selectedGroupId) {
       await setTypingState(true);
@@ -672,13 +682,14 @@ function bindEvents() {
   bind("ban-btn", "click", adminBan);
   bind("unban-btn", "click", adminUnban);
 }
-
 function boot() {
   bindEvents();
   checkSession();
 }
 
 document.addEventListener("DOMContentLoaded", boot);
+
+
 
 
 
