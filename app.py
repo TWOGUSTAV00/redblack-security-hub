@@ -1,4 +1,4 @@
-﻿import hashlib
+import hashlib
 import ipaddress
 import os
 import re
@@ -25,6 +25,7 @@ for _d in (UPLOAD_DIR, AVATAR_DIR, CHAT_DIR):
     _d.mkdir(parents=True, exist_ok=True)
 ALLOWED_IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp"}
 ALLOWED_AUDIO_EXT = {".mp3", ".wav", ".ogg", ".m4a", ".webm"}
+ALLOWED_VIDEO_EXT = {".mp4", ".webm", ".mov", ".mkv"}
 
 ADMIN_USERNAME = "Nemo"
 DEEPSEEK_API_KEY = (os.environ.get("DEEPSEEK_API_KEY") or "").strip()
@@ -461,7 +462,7 @@ def compact_text(text, limit):
 def wants_image_generation(question):
     q = (question or "").lower()
     has_image_term = any(word in q for word in ["imagem", "foto", "ilustracao", "arte", "logo", "wallpaper"])
-    has_generate_term = any(word in q for word in ["gere", "gerar", "crie", "criar", "faca", "faça", "produza", "desenhe"])
+    has_generate_term = any(word in q for word in ["gere", "gerar", "crie", "criar", "faca", "fa�a", "produza", "desenhe"])
     return has_image_term and has_generate_term
 
 
@@ -1009,6 +1010,7 @@ def chat_send():
 
     message_text = (request.form.get("message") or "").strip()
     image = request.files.get("image")
+    video = request.files.get("video")
     audio = request.files.get("audio")
 
     message_type = "text"
@@ -1018,6 +1020,11 @@ def chat_send():
         if not file_path:
             return jsonify({"error": "Imagem invalida"}), 400
         message_type = "image"
+    elif video and video.filename:
+        file_path = save_uploaded_file(video, CHAT_DIR, ALLOWED_VIDEO_EXT)
+        if not file_path:
+            return jsonify({"error": "Video invalido"}), 400
+        message_type = "video"
     elif audio and audio.filename:
         file_path = save_uploaded_file(audio, CHAT_DIR, ALLOWED_AUDIO_EXT)
         if not file_path:
@@ -1198,6 +1205,7 @@ def chat_group_send(group_id):
 
     message_text = (request.form.get("message") or "").strip()
     image = request.files.get("image")
+    video = request.files.get("video")
     audio = request.files.get("audio")
 
     conn = db_conn()
@@ -1217,6 +1225,12 @@ def chat_group_send(group_id):
             conn.close()
             return jsonify({"error": "Imagem invalida"}), 400
         message_type = "image"
+    elif video and video.filename:
+        file_path = save_uploaded_file(video, CHAT_DIR, ALLOWED_VIDEO_EXT)
+        if not file_path:
+            conn.close()
+            return jsonify({"error": "Video invalido"}), 400
+        message_type = "video"
     elif audio and audio.filename:
         file_path = save_uploaded_file(audio, CHAT_DIR, ALLOWED_AUDIO_EXT)
         if not file_path:
@@ -2090,6 +2104,18 @@ if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=False)
 else:
     init_db()
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

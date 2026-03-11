@@ -1,5 +1,17 @@
+let isAdmin = false;
 let currentConversationId = null;
 let aiBusy = false;
+let selectedPeer = null;
+let selectedGroupId = null;
+let socialTimer = null;
+let mediaRecorder = null;
+let recordedAudioBlob = null;
+let audioCtx = null;
+let analyserNode = null;
+let meterRaf = null;
+let meterTimer = null;
+let meterStart = null;
+let meterStream = null;
 
 function escapeHtml(text) {
   return (text || "")
@@ -45,25 +57,30 @@ function switchAuthTab(showLogin) {
   setMessage("");
 }
 
-function showAI(user) {
+function showApp(user, adminFlag) {
+  isAdmin = !!adminFlag;
   document.getElementById("auth-section").classList.add("hidden");
-  document.getElementById("ai-section").classList.remove("hidden");
-  document.getElementById("welcome-user").textContent = `Logado como: ${user}`;
+  document.getElementById("app-section").classList.remove("hidden");
+  document.getElementById("welcome-user").textContent = `Logado como: ${user}${isAdmin ? " (ADMIN)" : ""}`;
+  document.querySelectorAll(".admin-only").forEach((el) => {
+    el.classList.toggle("hidden", !isAdmin);
+  });
+  setTab("ai");
+  loadConversations().then(loadAiHistory);
+  startSocialPolling();
+  if (isAdmin) loadAdmin();
 }
 
 function showAuth() {
-  document.getElementById("ai-section").classList.add("hidden");
+  document.getElementById("app-section").classList.add("hidden");
   document.getElementById("auth-section").classList.remove("hidden");
+  if (socialTimer) { clearInterval(socialTimer); socialTimer = null; }
 }
 
 async function checkSession() {
   try {
     const me = await api("/api/auth/me", { method: "GET", headers: {} });
-    if (me.authenticated) {
-      showAI(me.username);
-      await loadConversations();
-      await loadAiHistory();
-    }
+    if (me.authenticated) showApp(me.username, me.is_admin);
   } catch {
     showAuth();
   }
@@ -97,9 +114,7 @@ async function onLogin(e) {
       }),
     });
     setMessage("Login realizado", true);
-    showAI(data.username);
-    await loadConversations();
-    await loadAiHistory();
+    showApp(data.username, data.is_admin);
   } catch (err) {
     setMessage(err.message);
   }
@@ -108,6 +123,15 @@ async function onLogin(e) {
 async function onLogout() {
   try { await api("/api/auth/logout", { method: "POST", headers: {} }); } catch {}
   showAuth();
+}
+
+function setTab(name) {
+  document.querySelectorAll(".tab-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.tab === name);
+  });
+  document.querySelectorAll(".tab-panel").forEach((panel) => {
+    panel.classList.toggle("active", panel.id === `tab-${name}`);
+  });
 }
 
 function renderConversations(items) {
@@ -171,12 +195,10 @@ function renderAiHistory(items) {
   }
   stream.innerHTML = items.map((m) => {
     const roleClass = m.role === "user" ? "user" : "assistant";
-    const sourceLine = m.source ? `<div class=\"ai-source\">Fonte: ${escapeHtml(m.source)}</div>` : "";
     return `
       <div class=\"ai-msg ${roleClass}\">
         <div class=\"ai-role\">${m.role === "user" ? "Voce" : "Nemo IA"}</div>
         <div class=\"ai-content\">${renderAiContent(m.content)}</div>
-        ${sourceLine}
       </div>
     `;
   }).join("");
@@ -235,7 +257,7 @@ async function onAiAsk() {
       imageInput.value = "";
     }
 
-    const data = await api("/api/ai/ask", {
+    await api("/api/ai/ask", {
       method: "POST",
       body: JSON.stringify({
         question,
@@ -244,7 +266,6 @@ async function onAiAsk() {
       }),
     });
 
-    currentConversationId = data.conversation_id || currentConversationId;
     await loadConversations();
     await loadAiHistory();
   } catch (err) {
@@ -259,6 +280,347 @@ async function onAiAsk() {
   }
 }
 
+function renderUsers(items) {
+  const list = document.getElementById("chat-users");
+  if (!list) return;
+  if (!items.length) {
+    list.innerHTML = "<div class=\"message\">Sem usuarios.</div>";
+    return;
+  }
+  list.innerHTML = items.map((u) => {
+    const active = selectedPeer === u.username && !selectedGroupId ? " active" : "";
+    return `<button class=\"${active ? "active" : ""}\" data-peer=\"${escapeHtml(u.username)}\">${escapeHtml(u.username)} ${u.online ? "(online)" : ""}</button>`;
+  }).join("");
+
+  list.querySelectorAll("[data-peer]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      selectedGroupId = null;
+      selectedPeer = btn.dataset.peer;
+      document.getElementById("chat-title").textContent = `Chat com ${selectedPeer}`;
+      await loadMessages();
+      await loadTyping();
+    });
+  });
+}
+
+function renderGroups(items) {
+  const list = document.getElementById("chat-groups");
+  if (!list) return;
+  if (!items.length) {
+    list.innerHTML = "<div class=\"message\">Sem grupos.</div>";
+    return;
+  }
+  list.innerHTML = items.map((g) => {
+    const active = selectedGroupId === Number(g.id) ? " active" : "";
+    return `<button class=\"${active ? "active" : ""}\" data-group=\"${g.id}\">${escapeHtml(g.name)}</button>`;
+  }).join("");
+
+  list.querySelectorAll("[data-group]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      selectedPeer = null;
+      selectedGroupId = Number(btn.dataset.group);
+      document.getElementById("chat-title").textContent = `Grupo #${selectedGroupId}`;
+      await loadMessages();
+      document.getElementById("chat-typing").textContent = "";
+    });
+  });
+}
+
+async function loadUsers() {
+  try {
+    const data = await api("/api/users", { method: "GET", headers: {} });
+    renderUsers(data.items || []);
+  } catch {}
+}
+
+async function loadGroups() {
+  try {
+    const data = await api("/api/chat/groups", { method: "GET", headers: {} });
+    renderGroups(data.items || []);
+  } catch {}
+}
+
+function renderMessages(items) {
+  const box = document.getElementById("chat-messages");
+  if (!box) return;
+  if (!selectedPeer && !selectedGroupId) {
+    box.innerHTML = "<div class=\"message\">Escolha um usuario ou grupo.</div>";
+    return;
+  }
+  if (!items.length) {
+    box.innerHTML = "<div class=\"message\">Sem mensagens.</div>";
+    return;
+  }
+  box.innerHTML = items.map((m) => {
+    const mine = selectedGroupId ? false : (m.sender !== selectedPeer);
+    const who = selectedGroupId ? `<strong>${escapeHtml(m.sender || "")}</strong><br/>` : "";
+    const text = m.message_text ? `<div>${escapeHtml(m.message_text)}</div>` : "";
+    const image = m.message_type === "image" && m.file_url ? `<img src=\"${escapeHtml(m.file_url)}\" alt=\"imagem\" />` : "";
+    const video = m.message_type === "video" && m.file_url ? `<video controls src=\"${escapeHtml(m.file_url)}\"></video>` : "";
+    const audio = m.message_type === "audio" && m.file_url ? `<audio controls src=\"${escapeHtml(m.file_url)}\"></audio>` : "";
+    return `<div class=\"chat-msg ${mine ? "mine" : "peer"}\">${who}${text}${image}${video}${audio}</div>`;
+  }).join("");
+  box.scrollTop = box.scrollHeight;
+}
+
+async function loadMessages() {
+  try {
+    if (selectedGroupId) {
+      const data = await api(`/api/chat/groups/${selectedGroupId}/messages?limit=200`, { method: "GET", headers: {} });
+      renderMessages(data.items || []);
+      return;
+    }
+    if (!selectedPeer) return;
+    const data = await api(`/api/chat/messages?with=${encodeURIComponent(selectedPeer)}&limit=200`, { method: "GET", headers: {} });
+    renderMessages(data.items || []);
+  } catch {}
+}
+
+async function loadTyping() {
+  if (!selectedPeer || selectedGroupId) return;
+  try {
+    const data = await api(`/api/chat/typing?with=${encodeURIComponent(selectedPeer)}`, { method: "GET", headers: {} });
+    document.getElementById("chat-typing").textContent = data.typing ? `${selectedPeer} esta digitando...` : "";
+  } catch {}
+}
+
+async function setTypingState(isTyping) {
+  if (!selectedPeer || selectedGroupId) return;
+  await api("/api/chat/typing", {
+    method: "POST",
+    body: JSON.stringify({ receiver: selectedPeer, is_typing: isTyping }),
+  }).catch(() => null);
+}
+
+function sendWithProgress(url, formData) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const progressEl = document.getElementById("upload-status");
+    xhr.open("POST", url, true);
+    xhr.withCredentials = true;
+    xhr.upload.onprogress = (evt) => {
+      if (!progressEl) return;
+      if (!evt.lengthComputable) { progressEl.textContent = "Enviando..."; return; }
+      const pct = Math.round((evt.loaded / evt.total) * 100);
+      progressEl.textContent = `Upload: ${pct}%`;
+    };
+    xhr.onload = () => {
+      if (progressEl) progressEl.textContent = "";
+      let data = {};
+      try { data = JSON.parse(xhr.responseText || "{}"); } catch {}
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data);
+      else reject(new Error(data.error || `Falha HTTP ${xhr.status}`));
+    };
+    xhr.onerror = () => {
+      if (progressEl) progressEl.textContent = "";
+      reject(new Error("Falha de rede no upload"));
+    };
+    xhr.send(formData);
+  });
+}
+
+async function onChatSend() {
+  if (!selectedPeer && !selectedGroupId) return;
+  const text = document.getElementById("chat-text").value.trim();
+  const media = document.getElementById("chat-media")?.files?.[0];
+  const audioFile = document.getElementById("chat-audio")?.files?.[0];
+  const audio = audioFile || recordedAudioBlob;
+
+  if (!text && !media && !audio) return;
+
+  const fd = new FormData();
+  if (text) fd.append("message", text);
+  if (media) {
+    if ((media.type || "").startsWith("video/")) fd.append("video", media);
+    else fd.append("image", media);
+  }
+  if (audio) fd.append("audio", audio, audio.name || "recorded.webm");
+
+  try {
+    if (selectedGroupId) {
+      await sendWithProgress(`/api/chat/groups/${selectedGroupId}/send`, fd);
+    } else {
+      fd.append("to", selectedPeer);
+      await sendWithProgress("/api/chat/send", fd);
+      await setTypingState(false);
+    }
+    document.getElementById("chat-text").value = "";
+    if (document.getElementById("chat-media")) document.getElementById("chat-media").value = "";
+    if (document.getElementById("chat-audio")) document.getElementById("chat-audio").value = "";
+    recordedAudioBlob = null;
+    await loadMessages();
+  } catch (err) {
+    alert(`Erro ao enviar: ${err.message}`);
+  }
+}
+
+async function onCreateGroup() {
+  const name = document.getElementById("group-name").value.trim();
+  const membersRaw = document.getElementById("group-members").value.trim();
+  const members = membersRaw ? membersRaw.split(",").map((x) => x.trim()).filter(Boolean) : [];
+  await api("/api/chat/groups", {
+    method: "POST",
+    body: JSON.stringify({ name, members }),
+  });
+  document.getElementById("group-name").value = "";
+  document.getElementById("group-members").value = "";
+  await loadGroups();
+}
+
+function showAudioMeter(show) {
+  const meter = document.getElementById("audio-meter");
+  if (!meter) return;
+  meter.classList.toggle("hidden", !show);
+}
+
+function formatClock(sec) {
+  const s = Math.max(0, Math.floor(sec));
+  const mm = String(Math.floor(s / 60)).padStart(2, "0");
+  const ss = String(s % 60).padStart(2, "0");
+  return mm + ":" + ss;
+}
+
+function startMeter() {
+  const canvas = document.getElementById("audio-wave");
+  const timeEl = document.getElementById("audio-time");
+  if (!canvas || !analyserNode) return;
+  const ctx = canvas.getContext("2d");
+  const buffer = new Uint8Array(analyserNode.fftSize);
+  meterStart = performance.now();
+  showAudioMeter(true);
+
+  const draw = () => {
+    analyserNode.getByteTimeDomainData(buffer);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#e1062e";
+    ctx.beginPath();
+    const slice = canvas.width / buffer.length;
+    let x = 0;
+    for (let i = 0; i < buffer.length; i += 1) {
+      const v = buffer[i] / 128.0;
+      const y = (v * canvas.height) / 2;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+      x += slice;
+    }
+    ctx.lineTo(canvas.width, canvas.height / 2);
+    ctx.stroke();
+    meterRaf = requestAnimationFrame(draw);
+  };
+
+  draw();
+  if (timeEl) {
+    meterTimer = setInterval(() => {
+      timeEl.textContent = formatClock((performance.now() - meterStart) / 1000);
+    }, 300);
+  }
+}
+
+function stopMeter() {
+  if (meterRaf) cancelAnimationFrame(meterRaf);
+  meterRaf = null;
+  if (meterTimer) clearInterval(meterTimer);
+  meterTimer = null;
+  const timeEl = document.getElementById("audio-time");
+  if (timeEl) timeEl.textContent = "00:00";
+  showAudioMeter(false);
+  if (audioCtx) {
+    audioCtx.close().catch(() => null);
+    audioCtx = null;
+  }
+  analyserNode = null;
+}
+
+async function startRecording() {
+  if (!navigator.mediaDevices?.getUserMedia) return;
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  meterStream = stream;
+
+  const chunks = [];
+  mediaRecorder = new MediaRecorder(stream);
+  mediaRecorder.ondataavailable = (e) => { if (e.data?.size) chunks.push(e.data); };
+  mediaRecorder.onstop = () => {
+    const blob = new Blob(chunks, { type: "audio/webm" });
+    blob.name = "audio-recorded.webm";
+    recordedAudioBlob = blob;
+    stream.getTracks().forEach((t) => t.stop());
+    stopMeter();
+  };
+
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  analyserNode = audioCtx.createAnalyser();
+  analyserNode.fftSize = 512;
+  const source = audioCtx.createMediaStreamSource(stream);
+  source.connect(analyserNode);
+  startMeter();
+
+  mediaRecorder.start();
+}
+
+function stopRecording() {
+  if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
+  if (meterStream) {
+    meterStream.getTracks().forEach((t) => t.stop());
+    meterStream = null;
+  }
+  stopMeter();
+}
+
+async function loadAdminUsers() {
+  const data = await api("/api/admin/users", { method: "GET", headers: {} });
+  const concise = (data.items || []).map((u) => ({
+    usuario: u.username,
+    criado_em: u.created_at,
+    online: u.online ? "sim" : "nao",
+  }));
+  document.getElementById("admin-users").textContent = JSON.stringify(concise, null, 2);
+}
+
+async function loadAdminBans() {
+  const data = await api("/api/admin/bans", { method: "GET", headers: {} });
+  document.getElementById("admin-bans").textContent = JSON.stringify(data.items || [], null, 2);
+}
+
+async function adminBan() {
+  const target_type = document.getElementById("ban-type").value;
+  const target_value = document.getElementById("ban-value").value.trim();
+  const reason = document.getElementById("ban-reason").value.trim();
+  if (!target_value) return;
+  await api("/api/admin/ban", {
+    method: "POST",
+    body: JSON.stringify({ target_type, target_value, reason }),
+  });
+  await loadAdminBans();
+}
+
+async function adminUnban() {
+  const target_type = document.getElementById("ban-type").value;
+  const target_value = document.getElementById("ban-value").value.trim();
+  if (!target_value) return;
+  await api("/api/admin/unban", {
+    method: "POST",
+    body: JSON.stringify({ target_type, target_value }),
+  });
+  await loadAdminBans();
+}
+
+async function loadAdmin() {
+  await loadAdminUsers();
+  await loadAdminBans();
+}
+
+function startSocialPolling() {
+  if (socialTimer) clearInterval(socialTimer);
+  socialTimer = setInterval(async () => {
+    await loadUsers();
+    await loadGroups();
+    await loadMessages();
+    await loadTyping();
+    if (isAdmin) await loadAdminUsers();
+  }, 5000);
+}
+
 function bind(id, event, handler) {
   const el = document.getElementById(id);
   if (el) el.addEventListener(event, handler);
@@ -270,6 +632,10 @@ function bindEvents() {
   bind("register-form", "submit", onRegister);
   bind("login-form", "submit", onLogin);
   bind("logout-btn", "click", onLogout);
+
+  document.querySelectorAll(".tab-btn").forEach((btn) => {
+    btn.addEventListener("click", () => setTab(btn.dataset.tab));
+  });
 
   bind("ai-ask-btn", "click", onAiAsk);
   bind("ai-new-chat-btn", "click", createNewChat);
@@ -284,6 +650,27 @@ function bindEvents() {
       onAiAsk();
     }
   });
+
+  bind("chat-refresh-users", "click", async () => {
+    await loadUsers();
+    await loadGroups();
+  });
+  bind("group-refresh-btn", "click", loadGroups);
+  bind("group-create-btn", "click", onCreateGroup);
+  bind("chat-send", "click", onChatSend);
+  bind("chat-text", "input", async () => {
+    if (selectedPeer && !selectedGroupId) {
+      await setTypingState(true);
+      setTimeout(() => setTypingState(false), 2000);
+    }
+  });
+
+  bind("rec-start", "click", startRecording);
+  bind("rec-stop", "click", stopRecording);
+
+  bind("admin-refresh", "click", loadAdmin);
+  bind("ban-btn", "click", adminBan);
+  bind("unban-btn", "click", adminUnban);
 }
 
 function boot() {
@@ -292,3 +679,4 @@ function boot() {
 }
 
 document.addEventListener("DOMContentLoaded", boot);
+
