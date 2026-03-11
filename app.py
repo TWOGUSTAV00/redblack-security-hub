@@ -1,4 +1,4 @@
-import hashlib
+ï»¿import hashlib
 import ipaddress
 import os
 import re
@@ -462,7 +462,7 @@ def compact_text(text, limit):
 def wants_image_generation(question):
     q = (question or "").lower()
     has_image_term = any(word in q for word in ["imagem", "foto", "ilustracao", "arte", "logo", "wallpaper"])
-    has_generate_term = any(word in q for word in ["gere", "gerar", "crie", "criar", "faca", "faça", "produza", "desenhe"])
+    has_generate_term = any(word in q for word in ["gere", "gerar", "crie", "criar", "faca", "faca", "produza", "desenhe"])
     return has_image_term and has_generate_term
 
 
@@ -2104,6 +2104,7 @@ if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=False)
 else:
     init_db()
+
 
 
 
