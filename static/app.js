@@ -1,4 +1,4 @@
-ï»¿let isAdmin = false;
+let isAdmin = false;
 let heartbeatTimer = null;
 let currentConversationId = null;
 let aiBusy = false;
@@ -275,7 +275,7 @@ function renderAiHistory(items) {
   if (!stream) return;
 
   if (!items.length) {
-    stream.innerHTML = '<div class="ai-empty">Chat vazio. FaÃ§a sua primeira pergunta.</div>';
+    stream.innerHTML = '<div class="ai-empty">Chat vazio. Faça sua primeira pergunta.</div>';
     return;
   }
 
@@ -316,7 +316,7 @@ function renderAiHistory(items) {
 async function loadAiHistory() {
   const stream = document.getElementById("ai-chat-stream");
   if (!currentConversationId) {
-    stream.innerHTML = '<div class="ai-empty">Clique em Novo Chat para comeÃ§ar.</div>';
+    stream.innerHTML = '<div class="ai-empty">Clique em Novo Chat para começar.</div>';
     return;
   }
 
@@ -865,7 +865,7 @@ async function loadTyping() {
   if (!selectedPeer || selectedGroupId) return;
   try {
     const data = await api(`/api/chat/typing?with=${encodeURIComponent(selectedPeer)}`, { method: "GET", headers: {} });
-    document.getElementById("social-typing").textContent = data.typing ? `${selectedPeer} estÃ¡ digitando...` : "";
+    document.getElementById("social-typing").textContent = data.typing ? `${selectedPeer} está digitando...` : "";
   } catch {}
 }
 
@@ -1050,7 +1050,7 @@ function bindEvents() {
   });
   bind("ai-image", "change", () => {
     const file = document.getElementById("ai-image")?.files?.[0];
-    setAiStatus(file ? Imagem pronta:  : "");
+    setAiStatus(file ? `Imagem pronta: ${file.name}` : "");
   });
 
   bind("theme-toggle", "click", () => {
@@ -1066,6 +1066,7 @@ function boot() {
 }
 
 document.addEventListener("DOMContentLoaded", boot);
+
 
 
 
