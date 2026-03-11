@@ -3,233 +3,105 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RedBlack Security Hub</title>
+  <title>Nemo IA | RedBlack</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/styles.css?v=20260311c" />
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css?v=20260311d" />
 </head>
 <body>
-  <div class="scanline"></div>
-  <header class="topbar">
+  <div class="bg-orb orb-1"></div>
+  <div class="bg-orb orb-2"></div>
+  <div class="bg-grid"></div>
+
+  <header class="site-header">
     <div>
-      <h1>RedBlack Security Hub</h1>
-      <p class="subtitle">Admin, perfil, mensagens e Nemo IA</p>
+      <h1>Nemo IA</h1>
+      <p>Assistente tecnico com respostas rapidas e historico de chats.</p>
     </div>
-    <div class="topbar-actions">
-      <button id="theme-toggle" class="btn-outline" type="button">Tema: Escuro</button>
-      <div class="hacker-corner" aria-hidden="true">
-        <div class="hacker"><div class="head"></div><div class="hood"></div><div class="body"></div><div class="laptop"></div></div>
-      </div>
-    </div>
+    <span class="badge">RedBlack</span>
   </header>
 
   <main>
-    <section id="auth-card" class="auth-shell">
-      <div class="auth-hero">
-        <div class="auth-hero-inner">
-          <h2>Bem-vindo ao RedBlack</h2>
-          <p>Entre para acessar o painel ou crie sua conta em segundos.</p>
-          <ul class="auth-bullets">
-            <li>Login rapido e seguro</li>
-            <li>Perfil com foto e nome</li>
-            <li>Mensagens e Nemo IA</li>
-          </ul>
-        </div>
-      </div>
-      <div class="auth-card" data-mode="login">
-        <div class="auth-head">
-          <h3 id="auth-title">Entrar</h3>
-          <div class="auth-toggle">
-            <button id="btn-login-tab" class="auth-tab active" type="button">Entrar</button>
-            <button id="btn-register-tab" class="auth-tab" type="button">Criar conta</button>
-          </div>
+    <section id="auth-section" class="auth-section">
+      <div class="auth-card">
+        <div class="auth-tabs">
+          <button id="btn-login-tab" class="auth-tab active" type="button">Entrar</button>
+          <button id="btn-register-tab" class="auth-tab" type="button">Criar conta</button>
         </div>
 
         <form id="login-form" class="auth-form">
           <label for="login-user">Usuario</label>
           <input id="login-user" required minlength="3" placeholder="seu_usuario" />
           <label for="login-pass">Senha</label>
-          <div class="auth-pass">
-            <input id="login-pass" type="password" required minlength="8" placeholder="sua_senha" />
-            <button class="pass-toggle" type="button" data-toggle-pass="login-pass">Mostrar</button>
-          </div>
-          <button type="submit" class="btn-danger">Entrar</button>
+          <input id="login-pass" type="password" required minlength="8" placeholder="sua_senha" />
+          <button type="submit" class="btn-primary">Entrar</button>
         </form>
 
         <form id="register-form" class="auth-form hidden">
           <label for="reg-user">Novo usuario</label>
           <input id="reg-user" required minlength="3" maxlength="32" placeholder="novo_usuario" />
           <label for="reg-pass">Nova senha</label>
-          <div class="auth-pass">
-            <input id="reg-pass" type="password" required minlength="8" placeholder="crie_uma_senha" />
-            <button class="pass-toggle" type="button" data-toggle-pass="reg-pass">Mostrar</button>
-          </div>
-          <button type="submit" class="btn-danger">Criar conta</button>
+          <input id="reg-pass" type="password" required minlength="8" placeholder="crie_uma_senha" />
+          <button type="submit" class="btn-primary">Criar conta</button>
         </form>
 
         <p id="auth-message" class="message"></p>
       </div>
+
+      <div class="auth-side">
+        <h2>Seu centro de conversas</h2>
+        <p>Entre para acessar o Nemo IA, salvar historico e continuar de onde parou.</p>
+        <div class="auth-highlights">
+          <div>
+            <h3>Rapidez</h3>
+            <p>Respostas objetivas com foco tecnico.</p>
+          </div>
+          <div>
+            <h3>Memoria</h3>
+            <p>Seus chats ficam salvos por usuario.</p>
+          </div>
+          <div>
+            <h3>Imagem</h3>
+            <p>Envie imagem e receba analise.</p>
+          </div>
+        </div>
+      </div>
     </section>
 
-    <section id="dashboard" class="hidden">
-      <div class="actions-row">
-        <h2>Painel Operacional</h2>
-        <div><span id="welcome-user"></span><button id="logout-btn" class="btn-outline" type="button">Sair</button></div>
+    <section id="ai-section" class="ai-section hidden">
+      <div class="ai-topbar">
+        <div>
+          <h2>Nemo IA</h2>
+          <p id="welcome-user"></p>
+        </div>
+        <button id="logout-btn" class="btn-ghost" type="button">Sair</button>
       </div>
 
-      <div class="topic-nav">
-        <button class="topic-btn active" data-topic="admin">Admin</button>
-        <button class="topic-btn" data-topic="profile">Perfil</button>
-        <button class="topic-btn" data-topic="social">Mensagens</button>
-        <button class="topic-btn" data-topic="ai">Nemo IA</button>
-      </div>
+      <div class="ai-shell">
+        <aside class="ai-sidebar">
+          <div class="ai-actions">
+            <button id="ai-new-chat-btn" class="btn-primary" type="button">Novo Chat</button>
+            <button id="ai-refresh-btn" class="btn-ghost" type="button">Atualizar</button>
+            <button id="ai-clear-btn" class="btn-ghost" type="button">Excluir chat</button>
+          </div>
+          <div id="ai-conversations" class="ai-history"></div>
+        </aside>
 
-      <section id="topic-admin" class="topic-panel active">
-        <h3 class="topic-title">Topico: Admin</h3>
-        <div id="admin-only" class="grid hidden">
-          <article class="card full">
-            <h3>Usuarios registrados</h3>
-            <p class="small">Lista completa com data de cadastro e status online.</p>
-            <button id="admin-users-btn" class="btn-danger" type="button">Atualizar</button>
-            <pre id="admin-users-output" class="output"></pre>
-          </article>
-          <article class="card full">
-            <h3>Alteracoes dos usuarios</h3>
-            <p class="small">Registra trocas de nome e fotos de perfil.</p>
-            <label for="changes-limit">Quantidade de registros</label>
-            <input id="changes-limit" value="80" />
-            <button id="changes-btn" class="btn-danger" type="button">Atualizar</button>
-            <pre id="changes-output" class="output"></pre>
-          </article>
-        </div>
-        <div id="admin-disabled" class="card hidden">
-          <p class="small">Este topico esta disponivel apenas para o usuario administrador (Nemo).</p>
-        </div>
-      </section>
-
-      <section id="topic-profile" class="topic-panel">
-        <h3 class="topic-title">Topico: Perfil do Usuario</h3>
-        <div class="grid">
-          <article class="card">
-            <h3>Seu perfil</h3>
-            <div class="profile-box">
-              <img id="profile-avatar-preview" class="profile-avatar" alt="Avatar" />
-              <div>
-                <div id="profile-current-name" class="small"></div>
-                <label for="profile-avatar-file">Nova foto</label>
-                <input id="profile-avatar-file" type="file" accept="image/*" />
-                <button id="profile-avatar-btn" class="btn-danger" type="button">Salvar foto</button>
-              </div>
-            </div>
-          </article>
-          <article class="card">
-            <h3>Trocar nome de usuario</h3>
-            <p class="small">Por seguranca, informe sua senha para trocar o nome.</p>
-            <label for="profile-new-username">Novo nome</label>
-            <input id="profile-new-username" placeholder="novo_usuario" />
-            <label for="profile-password-confirm">Senha atual</label>
-            <input id="profile-password-confirm" type="password" placeholder="Digite sua senha" />
-            <button id="profile-rename-btn" class="btn-danger" type="button">Atualizar nome</button>
-            <p id="profile-msg" class="message"></p>
-          </article>
-        </div>
-      </section>
-
-      <section id="topic-social" class="topic-panel">
-        <h3 class="topic-title">Topico: Mensagens entre Usuarios</h3>
-        <div class="social-shell">
-          <aside class="social-users card">
-            <h3>Usuarios</h3>
-            <button id="social-refresh-users" class="btn-outline" type="button">Atualizar</button>
-            <div id="social-users-list" class="social-users-list"></div>
-
-            <hr class="social-sep" />
-            <h3>Grupos</h3>
-            <input id="group-name" placeholder="Nome do grupo" />
-            <input id="group-members" placeholder="Membros (user1,user2)" />
-            <button id="group-create-btn" class="btn-danger" type="button">Criar grupo</button>
-            <button id="group-refresh-btn" class="btn-outline" type="button">Atualizar grupos</button>
-            <div id="social-groups-list" class="social-users-list"></div>
-          </aside>
-          <article class="social-chat card">
-            <h3 id="social-chat-title">Selecione um usuario ou grupo</h3>
-            <div id="social-typing" class="small"></div>
-            <div id="social-messages" class="social-messages"></div>
-            <div class="social-composer">
-              <input id="social-text" placeholder="Digite uma mensagem" />
-              <div class="social-file-row">
-                <label class="file-btn" for="social-image" title="Enviar imagem">
-                  <span class="file-ico" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M21.44 11.05l-8.49 8.49a6 6 0 01-8.49-8.49l8.49-8.49a4 4 0 015.66 5.66l-8.49 8.49a2 2 0 01-2.83-2.83l7.78-7.78" />
-                    </svg>
-                  </span>
-                  Imagem
-                </label>
-                <input id="social-image" type="file" accept="image/*" hidden />
-
-                <label class="file-btn" for="social-audio" title="Enviar audio">
-                  <span class="file-ico" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M4 4h11l5 5v11a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/>
-                      <path d="M15 4v5h5"/>
-                    </svg>
-                  </span>
-                  Audio
-                </label>
-                <input id="social-audio" type="file" accept="audio/*" hidden />
-              </div>
-              <div class="social-audio-row">
-                <button id="social-rec-start" class="btn-outline" type="button">Gravar audio</button>
-                <button id="social-rec-stop" class="btn-outline" type="button">Parar</button>
-              </div>
-              <div id="audio-meter" class="audio-meter hidden" aria-live="polite">
-                <canvas id="audio-wave" width="240" height="36"></canvas>
-                <span id="audio-time">00:00</span>
-              </div>
-              <div class="social-actions-row">
-                <button id="social-send" class="btn-danger" type="button">Enviar</button>
-                <button id="social-delete-conv" class="btn-outline" type="button">Excluir conversa</button>
-              </div>
-              <div id="social-upload-progress" class="small"></div>
-            </div>
-          </article>
-        </div>
-      </section>
-
-      <section id="topic-ai" class="topic-panel">
-        <h3 class="topic-title">Topico: Nemo IA</h3>
-        <section class="nemo-ai-shell">
-          <aside class="nemo-ai-sidebar">
-            <h3>Seus Chats</h3>
-            <button id="ai-new-chat-btn" class="btn-danger" type="button">Novo Chat</button>
-            <button id="ai-refresh-btn" class="btn-outline" type="button">Atualizar chats</button>
-            <button id="ai-clear-btn" class="btn-outline" type="button">Excluir chat atual</button>
-            <div id="ai-conversations" class="ai-history-list"></div>
-          </aside>
-          <div class="nemo-ai-main">
-            <div class="nemo-ai-head">Nemo IA: respostas tecnicas, codigo, imagem e contexto atual.</div>
-            <div id="ai-chat-stream" class="ai-chat-stream"></div>
-            <div id="ai-status" class="ai-status"></div>
-            <div class="nemo-ai-composer">
-              <input id="ai-question" placeholder="Pergunte alguma coisa" />
-              <input id="ai-image" type="file" accept="image/*" />
-              <button id="ai-ask-btn" class="btn-danger" type="button">Enviar</button>
-            </div>
+        <section class="ai-main">
+          <div id="ai-chat-stream" class="ai-stream"></div>
+          <div id="ai-status" class="ai-status"></div>
+          <div class="ai-composer">
+            <input id="ai-question" placeholder="Pergunte algo" />
+            <input id="ai-image" type="file" accept="image/*" />
+            <button id="ai-ask-btn" class="btn-primary" type="button">Enviar</button>
           </div>
         </section>
-      </section>
+      </div>
     </section>
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="/static/app.js?v=20260311c"></script>
+  <script src="/static/app.js?v=20260311d"></script>
 </body>
 </html>
-
-
-
-
-
-
