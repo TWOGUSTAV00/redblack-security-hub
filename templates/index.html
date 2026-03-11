@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/styles.css?v=20260311e" />
+  <link rel="stylesheet" href="/static/styles.css?v=20260311f" />
 </head>
 <body>
   <div class="bg-orb orb-1"></div>
@@ -23,51 +23,36 @@
   </header>
 
   <main>
-    <section id="auth-section" class="auth-section">
-      <div class="auth-card">
+        <section id="auth-section" class="auth-section">
+      <div class="auth-card auth-card-center">
+        <h2 class="auth-title">Login</h2>
         <div class="auth-tabs">
-          <button id="btn-login-tab" class="auth-tab active" type="button">Entrar</button>
-          <button id="btn-register-tab" class="auth-tab" type="button">Criar conta</button>
+          <button id="btn-login-tab" class="auth-tab active" type="button">Login</button>
+          <button id="btn-register-tab" class="auth-tab" type="button">Cadastro</button>
         </div>
 
         <form id="login-form" class="auth-form">
           <label for="login-user">Usuario</label>
-          <input id="login-user" required minlength="3" placeholder="seu_usuario" />
+          <input id="login-user" required minlength="3" placeholder="Usuario" />
           <label for="login-pass">Senha</label>
-          <input id="login-pass" type="password" required minlength="8" placeholder="sua_senha" />
+          <input id="login-pass" type="password" required minlength="8" placeholder="Senha" />
           <button type="submit" class="btn-primary">Entrar</button>
+          <p class="auth-footer">Nao tem conta? <span id="goto-register">Crie agora</span></p>
         </form>
 
         <form id="register-form" class="auth-form hidden">
           <label for="reg-user">Novo usuario</label>
-          <input id="reg-user" required minlength="3" maxlength="32" placeholder="novo_usuario" />
+          <input id="reg-user" required minlength="3" maxlength="32" placeholder="Novo usuario" />
           <label for="reg-pass">Nova senha</label>
-          <input id="reg-pass" type="password" required minlength="8" placeholder="crie_uma_senha" />
+          <input id="reg-pass" type="password" required minlength="8" placeholder="Nova senha" />
           <button type="submit" class="btn-primary">Criar conta</button>
+          <p class="auth-footer">Ja tem conta? <span id="goto-login">Entrar</span></p>
         </form>
 
         <p id="auth-message" class="message"></p>
       </div>
-
-      <div class="auth-side">
-        <h2>Entre para acessar</h2>
-        <p>Login e registro em uma pagina inicial dedicada. A IA so abre apos autenticar.</p>
-        <div class="auth-highlights">
-          <div>
-            <h3>Rapidez</h3>
-            <p>Respostas objetivas com foco tecnico.</p>
-          </div>
-          <div>
-            <h3>Memoria</h3>
-            <p>Seus chats ficam salvos por usuario.</p>
-          </div>
-          <div>
-            <h3>Midia</h3>
-            <p>Envie imagem e video no chat.</p>
-          </div>
-        </div>
-      </div>
     </section>
+
 
     <section id="app-section" class="app-section hidden">
       <div class="app-topbar">
@@ -206,6 +191,9 @@
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="/static/app.js?v=20260311e"></script>
+  <script src="/static/app.js?v=20260311f"></script>
 </body>
 </html>
+
+
+

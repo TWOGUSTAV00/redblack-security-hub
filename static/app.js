@@ -628,7 +628,7 @@ function bind(id, event, handler) {
 
 function bindEvents() {
   bind("btn-login-tab", "click", () => switchAuthTab(true));
-  bind("btn-register-tab", "click", () => switchAuthTab(false));
+  bind("btn-register-tab", "click", () => switchAuthTab(false));\r\n  bind("goto-register", "click", () => switchAuthTab(false));\r\n  bind("goto-login", "click", () => switchAuthTab(true));
   bind("register-form", "submit", onRegister);
   bind("login-form", "submit", onLogin);
   bind("logout-btn", "click", onLogout);
@@ -657,7 +657,7 @@ function bindEvents() {
   });
   bind("group-refresh-btn", "click", loadGroups);
   bind("group-create-btn", "click", onCreateGroup);
-  bind("chat-send", "click", onChatSend);
+  bind("chat-send", "click", onChatSend);\r\n  bind("chat-media", "change", () => {\r\n    const f = document.getElementById("chat-media")?.files?.[0];\r\n    if (f) document.getElementById("upload-status").textContent = "Arquivo pronto: " + f.name;\r\n  });\r\n  bind("chat-audio", "change", () => {\r\n    const f = document.getElementById("chat-audio")?.files?.[0];\r\n    if (f) document.getElementById("upload-status").textContent = "Audio pronto: " + f.name;\r\n  });
   bind("chat-text", "input", async () => {
     if (selectedPeer && !selectedGroupId) {
       await setTypingState(true);
@@ -679,4 +679,7 @@ function boot() {
 }
 
 document.addEventListener("DOMContentLoaded", boot);
+
+
+
 
