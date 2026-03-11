@@ -7,7 +7,6 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
@@ -15,17 +14,19 @@
   <header class="topbar">
     <div>
       <h1>RedBlack Security Hub</h1>
-      <p class="subtitle">Admin audit, geolocalizacao, threat intel, vulnerabilidades e Nemo IA</p>
+      <p class="subtitle">Admin, perfil, mensagens e Nemo IA</p>
     </div>
-    <div class="hacker-corner" aria-hidden="true">
-      <div class="hacker"><div class="head"></div><div class="hood"></div><div class="body"></div><div class="laptop"></div></div>
+    <div class="topbar-actions">
+      <button id="theme-toggle" class="btn-outline" type="button">Tema: Escuro</button>
+      <div class="hacker-corner" aria-hidden="true">
+        <div class="hacker"><div class="head"></div><div class="hood"></div><div class="body"></div><div class="laptop"></div></div>
+      </div>
     </div>
   </header>
 
   <main>
     <section id="auth-card" class="card auth-card">
       <h2>Acesso Seguro</h2>
-      <p class="small">Ao entrar no painel, o navegador pede sua localizacao para enriquecer os modulos.</p>
       <div class="auth-tabs">
         <button id="btn-login-tab" class="tab active" type="button">Login</button>
         <button id="btn-register-tab" class="tab" type="button">Registrar</button>
@@ -52,160 +53,34 @@
         <h2>Painel Operacional</h2>
         <div><span id="welcome-user"></span><button id="logout-btn" class="btn-outline" type="button">Sair</button></div>
       </div>
-      <p id="location-status" class="small"></p>
 
       <div class="topic-nav">
         <button class="topic-btn active" data-topic="admin">Admin</button>
-        <button class="topic-btn" data-topic="geo">Geo & Mapa</button>
-        <button class="topic-btn" data-topic="intel">Threat Intel</button>
-        <button class="topic-btn" data-topic="vuln">Vulnerabilidades</button>
-        <button class="topic-btn" data-topic="cyber">Cyber APIs</button>
         <button class="topic-btn" data-topic="profile">Perfil</button>
         <button class="topic-btn" data-topic="social">Mensagens</button>
         <button class="topic-btn" data-topic="ai">Nemo IA</button>
       </div>
 
       <section id="topic-admin" class="topic-panel active">
-        <h3 class="topic-title">Topico: Admin (simplificado)</h3>
+        <h3 class="topic-title">Topico: Admin</h3>
         <div id="admin-only" class="grid hidden">
           <article class="card full">
-            <h3>Usuarios que visitaram e logaram</h3>
-            <p class="small">Mostra apenas eventos de visita e login bem sucedido.</p>
-            <label for="audit-limit">Quantidade de registros</label>
-            <input id="audit-limit" value="80" />
-            <button id="audit-btn" class="btn-danger" type="button">Atualizar</button>
-            <pre id="audit-output" class="output"></pre>
+            <h3>Usuarios registrados</h3>
+            <p class="small">Lista completa com data de cadastro e status online.</p>
+            <button id="admin-users-btn" class="btn-danger" type="button">Atualizar</button>
+            <pre id="admin-users-output" class="output"></pre>
           </article>
           <article class="card full">
-            <h3>Usuarios online agora</h3>
-            <p class="small">Considera online quem enviou heartbeat nos ultimos 90 segundos.</p>
-            <pre id="online-output" class="output"></pre>
+            <h3>Alteracoes dos usuarios</h3>
+            <p class="small">Registra trocas de nome e fotos de perfil.</p>
+            <label for="changes-limit">Quantidade de registros</label>
+            <input id="changes-limit" value="80" />
+            <button id="changes-btn" class="btn-danger" type="button">Atualizar</button>
+            <pre id="changes-output" class="output"></pre>
           </article>
         </div>
         <div id="admin-disabled" class="card hidden">
           <p class="small">Este topico esta disponivel apenas para o usuario administrador (Nemo).</p>
-        </div>
-      </section>
-
-      <section id="topic-geo" class="topic-panel">
-        <h3 class="topic-title">Topico: Geolocalizacao e Conexao Atual</h3>
-        <div class="grid">
-          <article class="card">
-            <h3>Geolocalizacao por IP</h3>
-            <p class="small">Como usar: deixe vazio para consultar seu IP atual ou informe um IP especifico.</p>
-            <label for="geo-ip">IP (opcional)</label>
-            <input id="geo-ip" placeholder="Ex.: 8.8.8.8" />
-            <button id="geo-btn" class="btn-danger" type="button">Consultar localizacao</button>
-            <pre id="geo-output" class="output"></pre>
-          </article>
-          <article class="card">
-            <h3>Teste de conexao atual</h3>
-            <p class="small">Como usar: clique uma vez para medir latencia media, download e upload em Mbps.</p>
-            <button id="conn-test-btn" class="btn-danger" type="button">Executar speed test</button>
-            <pre id="conn-output" class="output"></pre>
-          </article>
-          <article class="card full">
-            <h3>Mapa global de eventos reais (USGS)</h3>
-            <p class="small">Como usar: clique em carregar para plotar terremotos das ultimas 24h.</p>
-            <button id="map-feed-btn" class="btn-danger" type="button">Carregar eventos globais</button>
-            <div id="map"></div>
-          </article>
-        </div>
-      </section>
-
-      <section id="topic-intel" class="topic-panel">
-        <h3 class="topic-title">Topico: Threat Intel</h3>
-        <div class="grid">
-          <article class="card">
-            <h3>Intel de IP (OTX + Shodan)</h3>
-            <p class="small">O que faz: reputacao, ASN, portas abertas e sinais de risco em um IP.</p>
-            <p class="small">Exemplo: 8.8.8.8</p>
-            <label for="intel-ip">IP alvo</label>
-            <input id="intel-ip" placeholder="8.8.8.8" />
-            <button id="intel-btn" class="btn-danger" type="button">Consultar inteligencia</button>
-            <pre id="intel-output" class="output"></pre>
-          </article>
-          <article class="card">
-            <h3>Intel de dominio (OTX)</h3>
-            <p class="small">O que faz: mostra sinais de ameaças, whois e contexto do dominio.</p>
-            <p class="small">Exemplo: example.com</p>
-            <label for="intel-domain">Dominio</label>
-            <input id="intel-domain" placeholder="example.com" />
-            <button id="intel-domain-btn" class="btn-danger" type="button">Consultar dominio</button>
-            <pre id="intel-domain-output" class="output"></pre>
-          </article>
-          <article class="card full">
-            <h3>Feed C2/Botnet (Abuse.ch Feodo)</h3>
-            <p class="small">O que faz: verifica se IP aparece em feed de infraestrutura maliciosa.</p>
-            <p class="small">Exemplo: 1.2.3.4</p>
-            <label for="feodo-ip">IP para checar (opcional)</label>
-            <input id="feodo-ip" placeholder="1.2.3.4" />
-            <button id="feodo-btn" class="btn-danger" type="button">Consultar feed</button>
-            <pre id="feodo-output" class="output"></pre>
-          </article>
-        </div>
-      </section>
-
-      <section id="topic-vuln" class="topic-panel">
-        <h3 class="topic-title">Topico: Vulnerabilidades e Exposicao</h3>
-        <div class="grid">
-          <article class="card">
-            <h3>Scan de dominio (Shodan InternetDB)</h3>
-            <p class="small">O que faz: resolve o dominio para IP e mostra portas/vulns/cpes publicas.</p>
-            <p class="small">Exemplo: example.com</p>
-            <label for="target-host">Dominio alvo</label>
-            <input id="target-host" placeholder="example.com" />
-            <button id="vuln-btn" class="btn-danger" type="button">Analisar dominio</button>
-            <pre id="vuln-output" class="output"></pre>
-          </article>
-          <article class="card">
-            <h3>Ultimos CVEs publicados</h3>
-            <p class="small">O que faz: busca CVEs recentes para monitoramento rapido.</p>
-            <label for="cve-limit">Quantidade (1-30)</label>
-            <input id="cve-limit" value="8" />
-            <button id="cve-btn" class="btn-danger" type="button">Buscar CVEs</button>
-            <pre id="cve-output" class="output"></pre>
-          </article>
-          <article class="card">
-            <h3>Certificados do dominio (CT logs)</h3>
-            <p class="small">O que faz: enumera certificados emitidos para o dominio.</p>
-            <label for="cert-domain">Dominio</label>
-            <input id="cert-domain" placeholder="example.com" />
-            <button id="cert-btn" class="btn-danger" type="button">Consultar crt.sh</button>
-            <pre id="cert-output" class="output"></pre>
-          </article>
-          <article class="card">
-            <h3>Senha vazada? (Pwned Passwords)</h3>
-            <p class="small">O que faz: verifica se a senha apareceu em vazamentos conhecidos.</p>
-            <label for="pwd-check">Senha para verificar</label>
-            <input id="pwd-check" type="password" placeholder="Digite para checagem" />
-            <button id="pwd-btn" class="btn-danger" type="button">Checar vazamento</button>
-            <pre id="pwd-output" class="output"></pre>
-          </article>
-        </div>
-      </section>
-
-
-      <section id="topic-cyber" class="topic-panel">
-        <h3 class="topic-title">Topico: Cyber APIs (sem key)</h3>
-        <div class="grid">
-          <article class="card">
-            <h3>CISA KEV (exploradas ativamente)</h3>
-            <button id="cisa-btn" class="btn-danger" type="button">Carregar KEV</button>
-            <pre id="cisa-output" class="output"></pre>
-          </article>
-          <article class="card">
-            <h3>URLhaus Recent</h3>
-            <button id="urlhaus-btn" class="btn-danger" type="button">Carregar URLs maliciosas</button>
-            <pre id="urlhaus-output" class="output"></pre>
-          </article>
-          <article class="card">
-            <h3>Security Headers</h3>
-            <label for="sec-domain">Dominio</label>
-            <input id="sec-domain" placeholder="example.com" />
-            <button id="sec-btn" class="btn-danger" type="button">Analisar headers</button>
-            <pre id="sec-output" class="output"></pre>
-          </article>
         </div>
       </section>
 
@@ -300,23 +175,8 @@
     </section>
   </main>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 

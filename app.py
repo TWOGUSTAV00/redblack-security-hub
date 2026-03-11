@@ -291,6 +291,18 @@ def init_db():
         )
         """
     )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS user_changes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            change_type TEXT NOT NULL,
+            details TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
     ensure_knowledge_base_seed(conn)
     conn.commit()
 
@@ -310,6 +322,15 @@ def init_db():
     conn.commit()
     conn.close()
 
+
+def record_user_change(username, change_type, details=None):
+    conn = db_conn()
+    conn.execute(
+        "INSERT INTO user_changes (username, change_type, details) VALUES (?, ?, ?)",
+        (username, change_type, details),
+    )
+    conn.commit()
+    conn.close()
 
 def record_access(event_type, username=None, details=None):
     ip = extract_client_ip()
@@ -708,6 +729,8 @@ def auth_register():
         return jsonify({"error": "Usuario ja existe"}), 409
 
     conn.close()
+    record_access("register", username)
+    record_user_change(username, "register", f"ip={extract_client_ip()}")
     return jsonify({"ok": True, "message": "Conta criada"})
 
 
@@ -828,6 +851,7 @@ def profile_rename():
 
     session["username"] = new_username
     record_access("profile_rename", new_username, f"old={user}")
+    record_user_change(new_username, "profile_rename", f"old={user}")
     return jsonify({"ok": True, "username": new_username})
 
 
@@ -847,6 +871,7 @@ def profile_avatar():
     conn.commit()
     conn.close()
 
+    record_user_change(user, "profile_avatar", f"file={Path(file_path).name}")
     return jsonify({"ok": True, "avatar_url": to_public_file_url(file_path)})
 
 
@@ -878,6 +903,59 @@ def users_list():
             "online": int(r["last_seen"] or 0) >= threshold,
         })
     return jsonify({"count": len(items), "items": items})
+
+
+@app.get("/api/admin/users")
+def admin_users():
+    user, err = require_admin()
+    if err:
+        return err
+    conn = db_conn()
+    rows = conn.execute(
+        """
+        SELECT username, avatar_path, created_at,
+               COALESCE((SELECT last_seen FROM active_sessions a WHERE a.username = u.username), 0) AS last_seen
+        FROM users u
+        ORDER BY created_at DESC
+        """
+    ).fetchall()
+    conn.close()
+
+    threshold = int(time.time()) - 90
+    items = []
+    for r in rows:
+        items.append(
+            {
+                "username": r["username"],
+                "created_at": r["created_at"],
+                "avatar_url": to_public_file_url(r["avatar_path"]) if r["avatar_path"] else None,
+                "online": int(r["last_seen"] or 0) >= threshold,
+            }
+        )
+    return jsonify({"count": len(items), "items": items})
+
+
+@app.get("/api/admin/changes")
+def admin_changes():
+    user, err = require_admin()
+    if err:
+        return err
+    try:
+        limit = max(20, min(300, int(request.args.get("limit", "80"))))
+    except ValueError:
+        limit = 80
+    conn = db_conn()
+    rows = conn.execute(
+        """
+        SELECT username, change_type, details, created_at
+        FROM user_changes
+        ORDER BY id DESC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    conn.close()
+    return jsonify({"items": [dict(r) for r in rows]})
 
 
 @app.get("/api/chat/messages")
@@ -914,6 +992,9 @@ def chat_messages_list():
         item["file_url"] = to_public_file_url(item.get("file_path")) if item.get("file_path") else None
         items.append(item)
     return jsonify({"count": len(items), "items": items})
+
+
+
 
 
 @app.post("/api/chat/send")
@@ -1104,6 +1185,9 @@ def chat_group_messages_list(group_id):
         item["file_url"] = to_public_file_url(item.get("file_path")) if item.get("file_path") else None
         items.append(item)
     return jsonify({"count": len(items), "items": items})
+
+
+
 
 
 @app.post("/api/chat/groups/<int:group_id>/send")
@@ -1698,6 +1782,9 @@ def cyber_cisa_kev():
     return jsonify({"count": len(items), "items": items})
 
 
+
+
+
 @app.get("/api/cyber/urlhaus-recent")
 def cyber_urlhaus_recent():
     _, err = require_auth()
@@ -1710,6 +1797,9 @@ def cyber_urlhaus_recent():
     urls = data.get("urls") or []
     items = urls[:50]
     return jsonify({"count": len(items), "items": items})
+
+
+
 
 
 @app.get("/api/cyber/security-headers")
@@ -1749,6 +1839,9 @@ def ai_conversations_list():
 
     items = [dict(r) for r in rows]
     return jsonify({"count": len(items), "items": items})
+
+
+
 
 
 @app.post("/api/ai/conversations")
@@ -1997,6 +2090,16 @@ if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=False)
 else:
     init_db()
+
+
+
+
+
+
+
+
+
+
 
 
 

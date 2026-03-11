@@ -1,7 +1,4 @@
-﻿let map;
-let geoMarker;
-let quakeLayer;
-let isAdmin = false;
+﻿let isAdmin = false;
 let heartbeatTimer = null;
 let currentConversationId = null;
 let aiBusy = false;
@@ -114,6 +111,22 @@ function setMessage(msg, ok = false) {
   el.style.color = ok ? "#31c48d" : "#ffd166";
 }
 
+const THEME_KEY = "rbsh-theme";
+
+function applyTheme(theme) {
+  const safe = theme === "light" ? "light" : "dark";
+  document.documentElement.dataset.theme = safe;
+  const btn = document.getElementById("theme-toggle");
+  if (btn) btn.textContent = safe === "light" ? "Tema: Claro" : "Tema: Escuro";
+  try { localStorage.setItem(THEME_KEY, safe); } catch {}
+}
+
+function initTheme() {
+  let theme = "dark";
+  try { theme = localStorage.getItem(THEME_KEY) || "dark"; } catch {}
+  applyTheme(theme);
+}
+
 function switchAuthTab(showLogin) {
   document.getElementById("login-form").classList.toggle("hidden", !showLogin);
   document.getElementById("register-form").classList.toggle("hidden", showLogin);
@@ -137,10 +150,10 @@ function setTopic(name) {
   });
   document.querySelectorAll(".topic-panel").forEach((panel) => {
     panel.classList.toggle("active", panel.id === `topic-${name}`);
-  });
-  if (name === "geo" && map) setTimeout(() => map.invalidateSize(), 60);
+  });;
   if (name === "profile") loadProfile();
   if (name === "social") { loadUsers(); loadGroups(); loadMessages(); }
+  if (name === "admin" && isAdmin) refreshAdmin();
 }
 
 async function startHeartbeat() {
@@ -188,28 +201,36 @@ function applyAdminMode() {
   document.getElementById("admin-disabled").classList.toggle("hidden", isAdmin);
 }
 
-async function refreshAudit() {
+async function refreshAdmin() {
   if (!isAdmin) return;
-  const limit = document.getElementById("audit-limit").value.trim() || "80";
-  output("audit-output", "Carregando auditoria...");
-  output("online-output", "Carregando online...");
+  output("admin-users-output", "Carregando usuarios...");
+  output("changes-output", "Carregando alteracoes...");
   try {
-    const data = await api(`/api/admin/audit?limit=${encodeURIComponent(limit)}`, { method: "GET", headers: {} });
-    const concise = (data.items || []).map((r) => ({
-      evento: r.event_type,
-      usuario: r.username,
-      ip: r.ip,
-      local: [r.city, r.region, r.country].filter(Boolean).join(" / "),
-      horario: r.created_at,
+    const users = await api("/api/admin/users", { method: "GET", headers: {} });
+    const concise = (users.items || []).map((u) => ({
+      usuario: u.username,
+      criado_em: u.created_at,
+      online: u.online ? "sim" : "nao",
     }));
-    output("audit-output", concise);
-    output("online-output", (data.online_users || []).map((u) => ({ usuario: u.username, ultimo_ping: u.last_seen })));
+    output("admin-users-output", concise);
   } catch (err) {
-    output("audit-output", `Erro: ${err.message}`);
-    output("online-output", `Erro: ${err.message}`);
+    output("admin-users-output", "Erro: " + err.message);
+  }
+
+  try {
+    const limit = document.getElementById("changes-limit")?.value?.trim() || "80";
+    const data = await api("/api/admin/changes?limit=" + encodeURIComponent(limit), { method: "GET", headers: {} });
+    const concise = (data.items || []).map((r) => ({
+      usuario: r.username,
+      tipo: r.change_type,
+      detalhes: r.details,
+      quando: r.created_at,
+    }));
+    output("changes-output", concise);
+  } catch (err) {
+    output("changes-output", "Erro: " + err.message);
   }
 }
-
 function renderConversations(items) {
   const list = document.getElementById("ai-conversations");
   if (!list) return;
@@ -400,11 +421,9 @@ function showDashboard(user, adminFlag) {
   document.getElementById("welcome-user").textContent = `Logado como: ${user}${isAdmin ? " (ADMIN)" : ""}`;
 
   applyAdminMode();
-  initMap();
-  requestBrowserLocation();
   setTopic("admin");
 
-  if (isAdmin) refreshAudit();
+  if (isAdmin) refreshAdmin();
   loadConversations().then(loadAiHistory);
   loadProfile();
   loadUsers();
@@ -969,89 +988,96 @@ function startSocialPolling() {
   }, 5000);
 }
 
+function bind(id, event, handler) {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener(event, handler);
+}
+
 function bindEvents() {
-  document.getElementById("btn-login-tab").addEventListener("click", () => switchAuthTab(true));
-  document.getElementById("btn-register-tab").addEventListener("click", () => switchAuthTab(false));
-  document.getElementById("register-form").addEventListener("submit", onRegister);
-  document.getElementById("login-form").addEventListener("submit", onLogin);
-  document.getElementById("logout-btn").addEventListener("click", onLogout);
+  bind("btn-login-tab", "click", () => switchAuthTab(true));
+  bind("btn-register-tab", "click", () => switchAuthTab(false));
+  bind("register-form", "submit", onRegister);
+  bind("login-form", "submit", onLogin);
+  bind("logout-btn", "click", onLogout);
 
   document.querySelectorAll(".topic-btn").forEach((btn) => {
     btn.addEventListener("click", () => setTopic(btn.dataset.topic));
   });
 
-  document.getElementById("audit-btn").addEventListener("click", refreshAudit);
+  bind("admin-users-btn", "click", refreshAdmin);
+  bind("changes-btn", "click", refreshAdmin);
 
-  document.getElementById("geo-btn").addEventListener("click", onGeo);
-  document.getElementById("conn-test-btn").addEventListener("click", onConnectionTest);
-  document.getElementById("map-feed-btn").addEventListener("click", onMapFeed);
+  bind("profile-rename-btn", "click", onProfileRename);
+  bind("profile-avatar-btn", "click", onProfileAvatar);
 
-  document.getElementById("intel-btn").addEventListener("click", onIntelIp);
-  document.getElementById("intel-domain-btn").addEventListener("click", onIntelDomain);
-  document.getElementById("feodo-btn").addEventListener("click", onFeodo);
-
-  document.getElementById("vuln-btn").addEventListener("click", onVuln);
-  document.getElementById("cve-btn").addEventListener("click", onCves);
-  document.getElementById("cert-btn").addEventListener("click", onCerts);
-  document.getElementById("pwd-btn").addEventListener("click", onPwnedPassword);
-
-  document.getElementById("cisa-btn").addEventListener("click", onCisaKev);
-  document.getElementById("urlhaus-btn").addEventListener("click", onUrlhaus);
-  document.getElementById("sec-btn").addEventListener("click", onSecurityHeaders);
-
-  document.getElementById("profile-rename-btn").addEventListener("click", onProfileRename);
-  document.getElementById("profile-avatar-btn").addEventListener("click", onProfileAvatar);
-
-  document.getElementById("social-refresh-users").addEventListener("click", async () => {
+  bind("social-refresh-users", "click", async () => {
     await loadUsers();
     await loadGroups();
     await loadMessages();
   });
-  document.getElementById("group-refresh-btn").addEventListener("click", loadGroups);
-  document.getElementById("group-create-btn").addEventListener("click", onCreateGroup);
-  document.getElementById("social-send").addEventListener("click", onSocialSend);
-  document.getElementById("social-delete-conv").addEventListener("click", onDeleteConversation);
-  document.getElementById("social-rec-start").addEventListener("click", startRecording);
-  document.getElementById("social-rec-stop").addEventListener("click", stopRecording);
-  document.getElementById("social-text").addEventListener("input", async () => {
+  bind("group-refresh-btn", "click", loadGroups);
+  bind("group-create-btn", "click", onCreateGroup);
+  bind("social-send", "click", onSocialSend);
+  bind("social-delete-conv", "click", onDeleteConversation);
+  bind("social-rec-start", "click", startRecording);
+  bind("social-rec-stop", "click", stopRecording);
+  bind("social-text", "input", async () => {
     if (selectedPeer && !selectedGroupId) {
       await setTypingState(true);
       if (typingTimer) clearTimeout(typingTimer);
       typingTimer = setTimeout(() => setTypingState(false), 2500);
     }
   });
-  document.getElementById("social-text").addEventListener("keydown", (e) => {
+  bind("social-text", "keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       onSocialSend();
     }
   });
 
-  document.getElementById("ai-ask-btn").addEventListener("click", onAiAsk);
-  document.getElementById("ai-new-chat-btn").addEventListener("click", createNewChat);
-  document.getElementById("ai-refresh-btn").addEventListener("click", async () => {
+  bind("ai-ask-btn", "click", onAiAsk);
+  bind("ai-new-chat-btn", "click", createNewChat);
+  bind("ai-refresh-btn", "click", async () => {
     await loadConversations();
     await loadAiHistory();
   });
-  document.getElementById("ai-clear-btn").addEventListener("click", clearAiHistory);
-  document.getElementById("ai-question").addEventListener("keydown", (e) => {
+  bind("ai-clear-btn", "click", clearAiHistory);
+  bind("ai-question", "keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       onAiAsk();
     }
   });
-  document.getElementById("ai-image").addEventListener("change", () => {
+  bind("ai-image", "change", () => {
     const file = document.getElementById("ai-image")?.files?.[0];
-    setAiStatus(file ? `Imagem pronta: ${file.name}` : "");
+    setAiStatus(file ? Imagem pronta:  : "");
+  });
+
+  bind("theme-toggle", "click", () => {
+    const current = document.documentElement.dataset.theme || "dark";
+    applyTheme(current === "dark" ? "light" : "dark");
   });
 }
 
 function boot() {
+  initTheme();
   bindEvents();
   checkSession();
 }
 
 document.addEventListener("DOMContentLoaded", boot);
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
