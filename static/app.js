@@ -7,7 +7,13 @@ let socialTimer = null;
 let selectedGroupId = null;
 let mediaRecorder = null;
 let recordedAudioBlob = null;
-let typingTimer = null;\nlet audioCtx = null;\nlet analyserNode = null;\nlet meterRaf = null;\nlet meterTimer = null;\nlet meterStart = null;\nlet meterStream = null;
+let typingTimer = null;
+let audioCtx = null;
+let analyserNode = null;
+let meterRaf = null;
+let meterTimer = null;
+let meterStart = null;
+let meterStream = null;
 
 function output(id, value) {
   const el = document.getElementById(id);
@@ -1149,6 +1155,7 @@ function boot() {
 }
 
 document.addEventListener("DOMContentLoaded", boot);
+
 
 
 
