@@ -134,10 +134,18 @@ function initTheme() {
 }
 
 function switchAuthTab(showLogin) {
-  document.getElementById("login-form").classList.toggle("hidden", !showLogin);
-  document.getElementById("register-form").classList.toggle("hidden", showLogin);
-  document.getElementById("btn-login-tab").classList.toggle("active", showLogin);
-  document.getElementById("btn-register-tab").classList.toggle("active", !showLogin);
+  const loginForm = document.getElementById("login-form");
+  const registerForm = document.getElementById("register-form");
+  const loginBtn = document.getElementById("btn-login-tab");
+  const registerBtn = document.getElementById("btn-register-tab");
+  const card = document.querySelector(".auth-card");
+  if (loginForm) loginForm.classList.toggle("hidden", !showLogin);
+  if (registerForm) registerForm.classList.toggle("hidden", showLogin);
+  if (loginBtn) loginBtn.classList.toggle("active", showLogin);
+  if (registerBtn) registerBtn.classList.toggle("active", !showLogin);
+  if (card) card.dataset.mode = showLogin ? "login" : "register";
+  const title = document.getElementById("auth-title");
+  if (title) title.textContent = showLogin ? "Entrar" : "Criar conta";
   setMessage("");
 }
 
@@ -1082,7 +1090,7 @@ function bind(id, event, handler) {
   if (el) el.addEventListener(event, handler);
 }
 
-function bindEvents() {
+function bindEvents() {\r\n  document.querySelectorAll('[data-toggle-pass]').forEach((btn) => {\r\n    btn.addEventListener('click', () => {\r\n      const id = btn.getAttribute('data-toggle-pass');\r\n      const input = document.getElementById(id);\r\n      if (!input) return;\r\n      const isPass = input.type === 'password';\r\n      input.type = isPass ? 'text' : 'password';\r\n      btn.textContent = isPass ? 'Ocultar' : 'Mostrar';\r\n    });\r\n  });\r\n\r\nfunction bindEvents() {
   bind("btn-login-tab", "click", () => switchAuthTab(true));
   bind("btn-register-tab", "click", () => switchAuthTab(false));
   bind("register-form", "submit", onRegister);
@@ -1155,6 +1163,8 @@ function boot() {
 }
 
 document.addEventListener("DOMContentLoaded", boot);
+
+
 
 
 

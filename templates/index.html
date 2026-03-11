@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/styles.css?v=20260311b" />
+  <link rel="stylesheet" href="/static/styles.css?v=20260311c" />
 </head>
 <body>
   <div class="scanline"></div>
@@ -25,27 +25,51 @@
   </header>
 
   <main>
-    <section id="auth-card" class="card auth-card">
-      <h2>Acesso Seguro</h2>
-      <div class="auth-tabs">
-        <button id="btn-login-tab" class="tab active" type="button">Login</button>
-        <button id="btn-register-tab" class="tab" type="button">Registrar</button>
+    <section id="auth-card" class="auth-shell">
+      <div class="auth-hero">
+        <div class="auth-hero-inner">
+          <h2>Bem-vindo ao RedBlack</h2>
+          <p>Entre para acessar o painel ou crie sua conta em segundos.</p>
+          <ul class="auth-bullets">
+            <li>Login rapido e seguro</li>
+            <li>Perfil com foto e nome</li>
+            <li>Mensagens e Nemo IA</li>
+          </ul>
+        </div>
       </div>
-      <form id="login-form">
-        <label for="login-user">Usuario</label>
-        <input id="login-user" required minlength="3" />
-        <label for="login-pass">Senha</label>
-        <input id="login-pass" type="password" required minlength="8" />
-        <button type="submit" class="btn-danger">Entrar</button>
-      </form>
-      <form id="register-form" class="hidden">
-        <label for="reg-user">Novo usuario</label>
-        <input id="reg-user" required minlength="3" maxlength="32" />
-        <label for="reg-pass">Nova senha</label>
-        <input id="reg-pass" type="password" required minlength="8" />
-        <button type="submit" class="btn-danger">Criar conta</button>
-      </form>
-      <p id="auth-message" class="message"></p>
+      <div class="auth-card" data-mode="login">
+        <div class="auth-head">
+          <h3 id="auth-title">Entrar</h3>
+          <div class="auth-toggle">
+            <button id="btn-login-tab" class="auth-tab active" type="button">Entrar</button>
+            <button id="btn-register-tab" class="auth-tab" type="button">Criar conta</button>
+          </div>
+        </div>
+
+        <form id="login-form" class="auth-form">
+          <label for="login-user">Usuario</label>
+          <input id="login-user" required minlength="3" placeholder="seu_usuario" />
+          <label for="login-pass">Senha</label>
+          <div class="auth-pass">
+            <input id="login-pass" type="password" required minlength="8" placeholder="sua_senha" />
+            <button class="pass-toggle" type="button" data-toggle-pass="login-pass">Mostrar</button>
+          </div>
+          <button type="submit" class="btn-danger">Entrar</button>
+        </form>
+
+        <form id="register-form" class="auth-form hidden">
+          <label for="reg-user">Novo usuario</label>
+          <input id="reg-user" required minlength="3" maxlength="32" placeholder="novo_usuario" />
+          <label for="reg-pass">Nova senha</label>
+          <div class="auth-pass">
+            <input id="reg-pass" type="password" required minlength="8" placeholder="crie_uma_senha" />
+            <button class="pass-toggle" type="button" data-toggle-pass="reg-pass">Mostrar</button>
+          </div>
+          <button type="submit" class="btn-danger">Criar conta</button>
+        </form>
+
+        <p id="auth-message" class="message"></p>
+      </div>
     </section>
 
     <section id="dashboard" class="hidden">
@@ -200,9 +224,11 @@
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="/static/app.js?v=20260311b"></script>
+  <script src="/static/app.js?v=20260311c"></script>
 </body>
 </html>
+
+
 
 
 

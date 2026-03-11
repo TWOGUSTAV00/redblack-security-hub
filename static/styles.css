@@ -91,3 +91,135 @@
   font-family: "Share Tech Mono", monospace;
   color: var(--muted);
 }
+
+/* Auth redesign */
+.auth-shell {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 18px;
+  align-items: stretch;
+  margin: 16px auto 20px;
+}
+
+.auth-hero {
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background:
+    radial-gradient(circle at 15% 15%, rgba(217, 4, 41, 0.25), transparent 45%),
+    linear-gradient(140deg, #0c0c0f, #141418 60%);
+  padding: 24px;
+  box-shadow: var(--shadow);
+  position: relative;
+  overflow: hidden;
+}
+
+.auth-hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 80% 20%, rgba(255,255,255,0.04), transparent 40%);
+  pointer-events: none;
+}
+
+.auth-hero-inner h2 {
+  margin: 0 0 6px;
+  font-family: "Share Tech Mono", monospace;
+}
+
+.auth-hero-inner p {
+  margin: 0 0 14px;
+  color: var(--muted);
+}
+
+.auth-bullets {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.auth-bullets li {
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(10, 10, 12, 0.6);
+}
+
+.auth-card {
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, var(--panel-soft), var(--panel));
+  padding: 22px;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 12px;
+  animation: fadeIn 0.4s ease;
+}
+
+.auth-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.auth-toggle {
+  display: inline-flex;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.auth-tab {
+  border: none;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.auth-tab.active {
+  background: linear-gradient(160deg, #d90429, #9d0208);
+  color: #fff;
+}
+
+.auth-form {
+  display: grid;
+  gap: 10px;
+  animation: slideIn 0.28s ease;
+}
+
+.auth-form.hidden {
+  display: none;
+}
+
+.auth-pass {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.pass-toggle {
+  border: 1px solid var(--border);
+  background: var(--panel-soft);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 900px) {
+  .auth-shell {
+    grid-template-columns: 1fr;
+  }
+}
