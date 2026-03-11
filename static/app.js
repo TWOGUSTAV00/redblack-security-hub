@@ -7,7 +7,7 @@ let socialTimer = null;
 let selectedGroupId = null;
 let mediaRecorder = null;
 let recordedAudioBlob = null;
-let typingTimer = null;
+let typingTimer = null;\nlet audioCtx = null;\nlet analyserNode = null;\nlet meterRaf = null;\nlet meterTimer = null;\nlet meterStart = null;\nlet meterStream = null;
 
 function output(id, value) {
   const el = document.getElementById(id);
@@ -957,23 +957,106 @@ async function onCreateGroup() {
   await loadGroups();
 }
 
+function showAudioMeter(show) {
+  const meter = document.getElementById("audio-meter");
+  if (!meter) return;
+  meter.classList.toggle("hidden", !show);
+}
+
+function formatClock(sec) {
+  const s = Math.max(0, Math.floor(sec));
+  const mm = String(Math.floor(s / 60)).padStart(2, "0");
+  const ss = String(s % 60).padStart(2, "0");
+  return ${mm}:;
+}
+
+function startMeter() {
+  const canvas = document.getElementById("audio-wave");
+  const timeEl = document.getElementById("audio-time");
+  if (!canvas || !analyserNode) return;
+  const ctx = canvas.getContext("2d");
+  const buffer = new Uint8Array(analyserNode.fftSize);
+  meterStart = performance.now();
+  showAudioMeter(true);
+
+  const draw = () => {
+    analyserNode.getByteTimeDomainData(buffer);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#d90429";
+    ctx.beginPath();
+    const slice = canvas.width / buffer.length;
+    let x = 0;
+    for (let i = 0; i < buffer.length; i += 1) {
+      const v = buffer[i] / 128.0;
+      const y = (v * canvas.height) / 2;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+      x += slice;
+    }
+    ctx.lineTo(canvas.width, canvas.height / 2);
+    ctx.stroke();
+    meterRaf = requestAnimationFrame(draw);
+  };
+
+  draw();
+  if (timeEl) {
+    meterTimer = setInterval(() => {
+      timeEl.textContent = formatClock((performance.now() - meterStart) / 1000);
+    }, 300);
+  }
+}
+
+function stopMeter() {
+  if (meterRaf) cancelAnimationFrame(meterRaf);
+  meterRaf = null;
+  if (meterTimer) clearInterval(meterTimer);
+  meterTimer = null;
+  const timeEl = document.getElementById("audio-time");
+  if (timeEl) timeEl.textContent = "00:00";
+  showAudioMeter(false);
+  if (audioCtx) {
+    audioCtx.close().catch(() => null);
+    audioCtx = null;
+  }
+  analyserNode = null;
+}
 async function startRecording() {
   if (!navigator.mediaDevices?.getUserMedia) return;
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  meterStream = stream;
+
   const chunks = [];
   mediaRecorder = new MediaRecorder(stream);
   mediaRecorder.ondataavailable = (e) => { if (e.data?.size) chunks.push(e.data); };
   mediaRecorder.onstop = () => {
     const blob = new Blob(chunks, { type: "audio/webm" });
-    blob.name = `audio-${Date.now()}.webm`;
+    blob.name = udio-.webm;
     recordedAudioBlob = blob;
     const progressEl = document.getElementById("social-upload-progress");
     if (progressEl) progressEl.textContent = "Audio gravado e pronto para enviar.";
     stream.getTracks().forEach((t) => t.stop());
+    stopMeter();
   };
+
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  analyserNode = audioCtx.createAnalyser();
+  analyserNode.fftSize = 512;
+  const source = audioCtx.createMediaStreamSource(stream);
+  source.connect(analyserNode);
+  startMeter();
+
   mediaRecorder.start();
 }
 
+function stopRecording() {
+  if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
+  if (meterStream) {
+    meterStream.getTracks().forEach((t) => t.stop());
+    meterStream = null;
+  }
+  stopMeter();
+}
 function stopRecording() {
   if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
 }
@@ -1066,6 +1149,9 @@ function boot() {
 }
 
 document.addEventListener("DOMContentLoaded", boot);
+
+
+
 
 
 
