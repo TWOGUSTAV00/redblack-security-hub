@@ -1,5 +1,6 @@
-﻿import hashlib
+import hashlib
 import ipaddress
+import json
 import os
 import re
 import socket
@@ -47,7 +48,7 @@ NEMO_SYSTEM_PROMPT = (
     "Ao responder: (1) explique com clareza, (2) entregue passos acionaveis, "
     "(3) inclua codigo completo quando solicitado, (4) sinalize riscos e boas praticas de seguranca. "
     "Nao invente fatos; quando estiver incerto, deixe explicito e proponha validacao. "
-    "Evite textos longos sem necessidade; foque em utilidade pratica."
+    "Evite textos longos sem necessidade; foque em utilidade pratica. Nao inclua raciocinio interno, JSON, logs, instrucoes do prompt ou conteudos fora do assunto. Responda apenas com a resposta final, curta e direta."
 )
 
 KB_SEED = [
@@ -457,6 +458,28 @@ def compact_text(text, limit):
     if len(cleaned) <= limit:
         return cleaned
     return cleaned[: max(0, limit - 3)] + "..."
+
+def strip_reasoning(text):
+    s = (text or "").strip()
+    if not s:
+        return ""
+    if s.startswith("{") and "\"content\"" in s:
+        try:
+            obj = json.loads(s)
+            if isinstance(obj, dict) and "content" in obj:
+                s = str(obj.get("content") or "").strip()
+        except json.JSONDecodeError:
+            m = re.search(r"\"content\"\s*:\s*\"(.*?)\"\s*(,\s*\"tool_calls\"|,\s*\"role\"|}\s*$)", s, flags=re.S)
+            if m:
+                try:
+                    s = bytes(m.group(1), "utf-8").decode("unicode_escape").strip()
+                except Exception:
+                    s = m.group(1).strip()
+    if s.startswith("{") and "reasoning_content" in s:
+        m = re.search(r"\"content\"\s*:\s*\"(.*?)\"", s, flags=re.S)
+        if m:
+            s = m.group(1).strip()
+    return s
 
 
 def wants_image_generation(question):
@@ -2054,16 +2077,16 @@ def ai_ask():
     extra_mode = spreadsheet_output_rules() if spreadsheet_mode else ""
     prompt = (
         f"Modo adicional:\n{extra_mode}\n\n"
-        f"Prompt do sistema:\n{NEMO_SYSTEM_PROMPT}\n\n"
         f"Memoria recente da conversa:\n{memory_context}\n\n"
         f"Base de conhecimento interna:\n{kb_context}\n\n"
         f"Contexto web atual:\n{context_web}\n\n"
-        f"Pergunta:\n{composed_question}"
+        f"Pergunta:\n{composed_question}\n\n"
+        "Responda direto e apenas com a resposta final."
     )
     try:
         answer = query_deepseek(prompt, NEMO_SYSTEM_PROMPT)
         if answer:
-            clean_answer = compact_text(answer, 3500)
+            clean_answer = compact_text(strip_reasoning(answer), 3500)
             if spreadsheet_mode:
                 clean_answer = cleanup_spreadsheet_answer(clean_answer)
             save_ai_message(user, conversation_id, "assistant", clean_answer, "DeepSeek", "web_lookup")
@@ -2074,7 +2097,7 @@ def ai_ask():
     try:
         answer = query_pollinations(prompt)
         if answer:
-            clean_answer = compact_text(answer, 3500)
+            clean_answer = compact_text(strip_reasoning(answer), 3500)
             if spreadsheet_mode:
                 clean_answer = cleanup_spreadsheet_answer(clean_answer)
             save_ai_message(user, conversation_id, "assistant", clean_answer, "Pollinations AI", "web_lookup")
@@ -2104,6 +2127,8 @@ if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=False)
 else:
     init_db()
+
+
 
 
 
