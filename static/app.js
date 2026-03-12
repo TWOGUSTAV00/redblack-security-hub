@@ -1,4 +1,4 @@
-﻿let isAdmin = false;
+let isAdmin = false;
 let currentConversationId = null;
 let aiBusy = false;
 let selectedPeer = null;
@@ -12,6 +12,7 @@ let meterRaf = null;
 let meterTimer = null;
 let meterStart = null;
 let meterStream = null;
+let isRecording = false;
 
 function escapeHtml(text) {
   return (text || "")
@@ -50,10 +51,12 @@ function switchAuthTab(showLogin) {
   const registerForm = document.getElementById("register-form");
   const loginBtn = document.getElementById("btn-login-tab");
   const registerBtn = document.getElementById("btn-register-tab");
+  const titleEl = document.querySelector(".auth-title");
   if (loginForm) loginForm.classList.toggle("hidden", !showLogin);
   if (registerForm) registerForm.classList.toggle("hidden", showLogin);
   if (loginBtn) loginBtn.classList.toggle("active", showLogin);
   if (registerBtn) registerBtn.classList.toggle("active", !showLogin);
+  if (titleEl) titleEl.textContent = showLogin ? "Login" : "Cadastro";
   setMessage("");
 }
 
@@ -448,6 +451,8 @@ async function onChatSend() {
     if (document.getElementById("chat-media")) document.getElementById("chat-media").value = "";
     if (document.getElementById("chat-audio")) document.getElementById("chat-audio").value = "";
     recordedAudioBlob = null;
+    const statusEl = document.getElementById("upload-status");
+    if (statusEl) statusEl.textContent = "";
     await loadMessages();
   } catch (err) {
     alert(`Erro ao enviar: ${err.message}`);
@@ -533,7 +538,11 @@ function stopMeter() {
 }
 
 async function startRecording() {
-  if (!navigator.mediaDevices?.getUserMedia) return;
+  if (isRecording) return;
+  if (!navigator.mediaDevices?.getUserMedia) {
+    alert("Seu navegador nao permite gravar audio aqui.");
+    return;
+  }
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   meterStream = stream;
 
@@ -546,6 +555,13 @@ async function startRecording() {
     recordedAudioBlob = blob;
     stream.getTracks().forEach((t) => t.stop());
     stopMeter();
+    const status = document.getElementById("upload-status");
+    if (status) status.textContent = "Audio gravado, pronto para enviar.";
+    isRecording = false;
+    const startBtn = document.getElementById("rec-start");
+    const stopBtn = document.getElementById("rec-stop");
+    if (startBtn) startBtn.disabled = false;
+    if (stopBtn) stopBtn.disabled = true;
   };
 
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -556,15 +572,26 @@ async function startRecording() {
   startMeter();
 
   mediaRecorder.start();
+  isRecording = true;
+  const startBtn = document.getElementById("rec-start");
+  const stopBtn = document.getElementById("rec-stop");
+  if (startBtn) startBtn.disabled = true;
+  if (stopBtn) stopBtn.disabled = false;
 }
 
 function stopRecording() {
+  if (!isRecording && (!mediaRecorder || mediaRecorder.state === "inactive")) return;
   if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
   if (meterStream) {
     meterStream.getTracks().forEach((t) => t.stop());
     meterStream = null;
   }
   stopMeter();
+  isRecording = false;
+  const startBtn = document.getElementById("rec-start");
+  const stopBtn = document.getElementById("rec-stop");
+  if (startBtn) startBtn.disabled = false;
+  if (stopBtn) stopBtn.disabled = true;
 }
 
 async function loadAdminUsers() {

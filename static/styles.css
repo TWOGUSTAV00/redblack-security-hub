@@ -165,12 +165,12 @@ main { width: min(1200px, 92vw); margin: 0 auto 60px; }
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
 
-.ai-shell { display: grid; grid-template-columns: 260px 1fr; gap: 16px; }
+.ai-shell { display: grid; grid-template-columns: 240px 1fr; gap: 12px; }
 
 .ai-sidebar {
   border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 16px;
+  border-radius: 12px;
+  padding: 12px;
   background: var(--panel);
   box-shadow: var(--shadow);
 }
@@ -192,21 +192,22 @@ main { width: min(1200px, 92vw); margin: 0 auto 60px; }
 
 .ai-main {
   border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 16px;
+  border-radius: 12px;
+  padding: 12px;
   background: var(--panel-soft);
   display: grid;
   grid-template-rows: 1fr auto auto;
-  gap: 10px;
+  gap: 8px;
   box-shadow: var(--shadow);
+  min-height: 420px;
 }
 
 .ai-stream {
-  min-height: 420px;
-  max-height: 520px;
+  min-height: 320px;
+  max-height: calc(100vh - 260px);
   overflow-y: auto;
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .ai-msg {
@@ -247,16 +248,16 @@ main { width: min(1200px, 92vw); margin: 0 auto 60px; }
 
 .file-ico { display: inline-flex; }
 
-.chat-shell { display: grid; grid-template-columns: 300px 1fr; gap: 16px; }
+.chat-shell { display: grid; grid-template-columns: 260px 1fr; gap: 12px; }
 
 .chat-sidebar {
   border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 16px;
+  border-radius: 12px;
+  padding: 12px;
   background: var(--panel);
   box-shadow: var(--shadow);
   display: grid;
-  gap: 16px;
+  gap: 12px;
 }
 
 .chat-block h3 { margin: 0 0 8px; }
@@ -282,23 +283,24 @@ main { width: min(1200px, 92vw); margin: 0 auto 60px; }
 
 .chat-main {
   border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 16px;
+  border-radius: 12px;
+  padding: 12px;
   background: var(--panel-soft);
   display: grid;
   grid-template-rows: auto 1fr auto;
-  gap: 12px;
+  gap: 10px;
   box-shadow: var(--shadow);
+  min-height: 380px;
 }
 
 .chat-header { display: flex; justify-content: space-between; align-items: center; }
 
 .chat-messages {
-  min-height: 320px;
-  max-height: 520px;
+  min-height: 280px;
+  max-height: calc(100vh - 260px);
   overflow-y: auto;
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .chat-msg {
