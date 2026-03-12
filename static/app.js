@@ -195,7 +195,7 @@ function renderAiHistory(items) {
   const stream = document.getElementById("ai-chat-stream");
   if (!stream) return;
   if (!items.length) {
-    stream.innerHTML = '<div class="message">Chat vazio. Faça sua primeira pergunta.</div>';
+    stream.innerHTML = '<div class="message">Chat vazio. Faca sua primeira pergunta.</div>';
     return;
   }
   stream.innerHTML = items.map((m) => {
@@ -208,6 +208,28 @@ function renderAiHistory(items) {
     `;
   }).join("");
   stream.scrollTop = stream.scrollHeight;
+}
+
+function appendAiMessage(role, content, tempId = null) {
+  const stream = document.getElementById("ai-chat-stream");
+  if (!stream) return;
+  const wrapper = document.createElement("div");
+  wrapper.className = `ai-msg ${role}`;
+  if (tempId) wrapper.dataset.tempId = tempId;
+  wrapper.innerHTML = `
+    <div class="ai-role">${role === "user" ? "Voce" : "Nemo IA"}</div>
+    <div class="ai-content">${renderAiContent(content)}</div>
+  `;
+  stream.appendChild(wrapper);
+  stream.scrollTop = stream.scrollHeight;
+}
+
+function setAiTyping(show) {
+  const status = document.getElementById("ai-status");
+  if (!status) return;
+  status.innerHTML = show
+    ? 'Nemo IA digitando<span class="typing-dots"><span>.</span><span>.</span><span>.</span></span>'
+    : "";
 }
 
 async function loadAiHistory() {
@@ -255,7 +277,10 @@ async function onAiAsk() {
   try {
     if (!currentConversationId) await createNewChat();
     const question = questionRaw || "Explique e resolva com base na imagem enviada.";
+    const displayText = questionRaw || (file ? "Imagem enviada" : "Pergunta enviada");
     input.value = "";
+    appendAiMessage("user", displayText);
+    setAiTyping(true);
     let imageText = "";
     if (file) {
       imageText = await ocrWithTimeout(file, 12000);
@@ -280,6 +305,7 @@ async function onAiAsk() {
       stream.scrollTop = stream.scrollHeight;
     }
   } finally {
+    setAiTyping(false);
     aiBusy = false;
     if (askBtn) askBtn.disabled = false;
   }
@@ -719,7 +745,6 @@ function boot() {
 }
 
 document.addEventListener("DOMContentLoaded", boot);
-
 
 
 
