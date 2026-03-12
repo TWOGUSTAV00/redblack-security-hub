@@ -609,16 +609,24 @@ main {
 .chat-msg {
   border: none;
   box-shadow: none;
+  background: transparent;
+  padding: 6px 2px;
 }
 
 .ai-msg.user,
 .chat-msg.mine {
-  background: rgba(225, 6, 46, 0.22);
+  background: transparent;
 }
 
 .ai-msg.assistant,
 .chat-msg.peer {
-  background: rgba(255, 255, 255, 0.05);
+  background: transparent;
+}
+
+.ai-content,
+.chat-msg > div,
+.chat-msg > strong {
+  background: transparent;
 }
 
 .ai-status {
