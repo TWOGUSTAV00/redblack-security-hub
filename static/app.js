@@ -77,6 +77,8 @@ function showApp(user, adminFlag) {
 function showAuth() {
   document.getElementById("app-section").classList.add("hidden");
   document.getElementById("auth-section").classList.remove("hidden");
+  // garante que a aba inicial seja sempre Login
+  switchAuthTab(true);
   if (socialTimer) { clearInterval(socialTimer); socialTimer = null; }
 }
 
@@ -711,6 +713,8 @@ function bindEvents() {
 }
 function boot() {
   bindEvents();
+  // força estado inicial consistente (apenas login visível)
+  switchAuthTab(true);
   checkSession();
 }
 
