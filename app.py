@@ -305,6 +305,40 @@ def init_db():
         )
         """
     )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS posts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS post_likes (
+            post_id INTEGER NOT NULL,
+            username TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (post_id, username)
+        )
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS post_comments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            post_id INTEGER NOT NULL,
+            username TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
     ensure_knowledge_base_seed(conn)
     conn.commit()
 
@@ -520,19 +554,12 @@ def build_generated_image_url(question):
 
 
 def build_local_answer(question, image_text, context_web):
-    parts = [
-        "Estou sem acesso ao provedor externo agora, mas sigo te ajudando.",
-        f"Pergunta: {question}",
-    ]
-    if image_text:
-        parts.append(f"Texto detectado da imagem: {compact_text(image_text, 450)}")
     if context_web and context_web != "Sem contexto web adicional.":
-        parts.append(f"Contexto web util: {compact_text(context_web, 450)}")
-    parts.append(
-        "Se quiser resposta mais profunda (codigo completo, arquitetura ou debug), "
-        "mande linguagem + objetivo + erro atual."
-    )
-    return "\n\n".join(parts)
+        cleaned = context_web.replace("Resumo web: ", "").replace("Topico relacionado: ", "")
+        return compact_text(cleaned, 900)
+    if image_text:
+        return "Texto da imagem: " + compact_text(image_text, 600)
+    return "Nao consegui acessar a IA agora. Tente novamente."
 
 
 def query_pollinations(prompt):
