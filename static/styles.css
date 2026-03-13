@@ -310,7 +310,7 @@ main { width: min(1200px, 92vw); margin: 0 auto 60px; }
 
 .ai-composer {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: 1fr auto auto auto;
   gap: 10px;
 }
 

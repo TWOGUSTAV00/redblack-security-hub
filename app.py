@@ -7,32 +7,48 @@ import socket
 import sqlite3
 import time
 import uuid
+from io import BytesIO
 from datetime import timedelta
 from pathlib import Path
 from urllib.parse import quote, urlparse
 
 import requests
 from flask import Flask, Response, jsonify, render_template, request, session
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
 from werkzeug.exceptions import HTTPException
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
+try:
+    from PyPDF2 import PdfReader
+except Exception:
+    PdfReader = None
+try:
+    from docx import Document
+except Exception:
+    Document = None
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "app.db"
 ALLOWED_SCHEMES = {"http", "https"}
 UPLOAD_DIR = BASE_DIR / "static" / "uploads"
 AVATAR_DIR = UPLOAD_DIR / "avatars"
 CHAT_DIR = UPLOAD_DIR / "chat"
-for _d in (UPLOAD_DIR, AVATAR_DIR, CHAT_DIR):
+AI_FILES_DIR = UPLOAD_DIR / "ai_files"
+for _d in (UPLOAD_DIR, AVATAR_DIR, CHAT_DIR, AI_FILES_DIR):
     _d.mkdir(parents=True, exist_ok=True)
 ALLOWED_IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp"}
 ALLOWED_AUDIO_EXT = {".mp3", ".wav", ".ogg", ".m4a", ".webm"}
 ALLOWED_VIDEO_EXT = {".mp4", ".webm", ".mov", ".mkv"}
+ALLOWED_DOC_EXT = {".txt", ".pdf", ".docx", ".doc"}
 
 ADMIN_USERNAME = "Nemo"
 DEEPSEEK_API_KEY = (os.environ.get("DEEPSEEK_API_KEY") or "").strip()
 DEEPSEEK_MODEL = (os.environ.get("DEEPSEEK_MODEL") or "deepseek-chat").strip()
 GEMINI_API_KEY = (os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_AI_STUDIO_API_KEY") or "").strip()
 GEMINI_MODEL = (os.environ.get("GEMINI_MODEL") or "gemini-1.5-flash").strip()
+GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON = (os.environ.get("GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON") or "").strip()
+GOOGLE_DRIVE_ROOT_FOLDER_ID = (os.environ.get("GOOGLE_DRIVE_ROOT_FOLDER_ID") or "").strip()
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "nemo-redblack-secret-change-me")
@@ -311,6 +327,19 @@ def init_db():
 
     conn.execute(
         """
+        CREATE TABLE IF NOT EXISTS ai_files (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            local_path TEXT,
+            drive_file_id TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS posts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT NOT NULL,
@@ -508,6 +537,74 @@ def parse_image_data_url(data_url):
     except ValueError:
         return None, None
 
+def get_drive_service():
+    if not GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON or not GOOGLE_DRIVE_ROOT_FOLDER_ID:
+        return None
+    try:
+        info = json.loads(GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON)
+    except json.JSONDecodeError:
+        return None
+    creds = service_account.Credentials.from_service_account_info(
+        info, scopes=["https://www.googleapis.com/auth/drive"]
+    )
+    return build("drive", "v3", credentials=creds)
+
+def ensure_user_drive_folder(service, username):
+    if not service:
+        return None
+    q = (
+        f"mimeType='application/vnd.google-apps.folder' and "
+        f"name='{username}' and '{GOOGLE_DRIVE_ROOT_FOLDER_ID}' in parents and trashed=false"
+    )
+    res = service.files().list(q=q, fields="files(id,name)").execute()
+    files = res.get("files") or []
+    if files:
+        return files[0]["id"]
+    metadata = {
+        "name": username,
+        "mimeType": "application/vnd.google-apps.folder",
+        "parents": [GOOGLE_DRIVE_ROOT_FOLDER_ID],
+    }
+    created = service.files().create(body=metadata, fields="id").execute()
+    return created.get("id")
+
+def upload_to_drive(local_path, username):
+    service = get_drive_service()
+    if not service:
+        return None
+    folder_id = ensure_user_drive_folder(service, username)
+    if not folder_id:
+        return None
+    filename = Path(local_path).name
+    media = MediaFileUpload(local_path, resumable=False)
+    metadata = {"name": filename, "parents": [folder_id]}
+    created = service.files().create(body=metadata, media_body=media, fields="id").execute()
+    return created.get("id")
+
+def extract_text_from_file(path):
+    ext = Path(path).suffix.lower()
+    if ext == ".txt":
+        try:
+            return Path(path).read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            return ""
+    if ext == ".pdf" and PdfReader:
+        try:
+            reader = PdfReader(path)
+            out = []
+            for page in reader.pages:
+                out.append(page.extract_text() or "")
+            return "\n".join(out)
+        except Exception:
+            return ""
+    if ext in {".docx", ".doc"} and Document:
+        try:
+            doc = Document(path)
+            return "\n".join([p.text for p in doc.paragraphs if p.text])
+        except Exception:
+            return ""
+    return ""
+
 def strip_reasoning(text):
     s = (text or "").strip()
     if not s:
@@ -556,6 +653,57 @@ def choose_ai_provider(question, image_text):
     if wants_math_or_code(question):
         return "deepseek"
     return "gemini"
+
+def run_ai_router(prompt, question, image_text, spreadsheet_mode):
+    provider = choose_ai_provider(question, image_text)
+    if provider == "gemini":
+        try:
+            answer = query_gemini(prompt, NEMO_SYSTEM_PROMPT)
+            if answer:
+                clean_answer = compact_text(strip_reasoning(answer), 3500)
+                if spreadsheet_mode:
+                    clean_answer = cleanup_spreadsheet_answer(clean_answer)
+                return clean_answer, "Gemini"
+        except requests.RequestException:
+            pass
+        try:
+            answer = query_deepseek(prompt, NEMO_SYSTEM_PROMPT)
+            if answer:
+                clean_answer = compact_text(strip_reasoning(answer), 3500)
+                if spreadsheet_mode:
+                    clean_answer = cleanup_spreadsheet_answer(clean_answer)
+                return clean_answer, "DeepSeek"
+        except requests.RequestException:
+            pass
+    else:
+        try:
+            answer = query_deepseek(prompt, NEMO_SYSTEM_PROMPT)
+            if answer:
+                clean_answer = compact_text(strip_reasoning(answer), 3500)
+                if spreadsheet_mode:
+                    clean_answer = cleanup_spreadsheet_answer(clean_answer)
+                return clean_answer, "DeepSeek"
+        except requests.RequestException:
+            pass
+        try:
+            answer = query_gemini(prompt, NEMO_SYSTEM_PROMPT)
+            if answer:
+                clean_answer = compact_text(strip_reasoning(answer), 3500)
+                if spreadsheet_mode:
+                    clean_answer = cleanup_spreadsheet_answer(clean_answer)
+                return clean_answer, "Gemini"
+        except requests.RequestException:
+            pass
+    try:
+        answer = query_pollinations(prompt)
+        if answer:
+            clean_answer = compact_text(strip_reasoning(answer), 3500)
+            if spreadsheet_mode:
+                clean_answer = cleanup_spreadsheet_answer(clean_answer)
+            return clean_answer, "Pollinations AI"
+    except requests.RequestException:
+        pass
+    return None, None
 
 
 def spreadsheet_output_rules():
@@ -2087,6 +2235,65 @@ def ai_history_delete_one(message_id):
     return jsonify({"ok": True})
 
 
+@app.post("/api/ai/upload")
+def ai_upload():
+    user, err = require_auth()
+    if err:
+        return err
+    upload = request.files.get("file")
+    if not upload or not upload.filename:
+        return jsonify({"error": "Arquivo ausente"}), 400
+    file_path = save_uploaded_file(upload, AI_FILES_DIR, ALLOWED_DOC_EXT)
+    if not file_path:
+        return jsonify({"error": "Arquivo invalido"}), 400
+    drive_id = upload_to_drive(file_path, user)
+    conn = db_conn()
+    conn.execute(
+        "INSERT INTO ai_files (username, filename, local_path, drive_file_id) VALUES (?, ?, ?, ?)",
+        (user, upload.filename, file_path, drive_id),
+    )
+    conn.commit()
+    conn.close()
+
+    question = (request.form.get("question") or "Resuma o arquivo enviado.").strip()
+    conv_raw = request.form.get("conversation_id")
+    conversation_id = None
+    if conv_raw:
+        try:
+            conversation_id = int(conv_raw)
+        except (TypeError, ValueError):
+            return jsonify({"error": "conversation_id invalido"}), 400
+        if not conversation_exists(user, conversation_id):
+            return jsonify({"error": "Conversa nao encontrada"}), 404
+    else:
+        conversation_id = create_ai_conversation(user, question[:48])
+
+    file_text = compact_text(extract_text_from_file(file_path), 7000)
+    if not file_text:
+        return jsonify({"error": "Nao consegui ler o arquivo"}), 400
+
+    composed_question = f"{question}\n\nConteudo do arquivo:\n{file_text}"
+    save_ai_message(user, conversation_id, "user", question)
+    record_access("ai_file", user, upload.filename[:120])
+
+    memory_context = compact_text(fetch_conversation_memory(user, conversation_id, limit=10), 1800)
+    kb_context = compact_text(retrieve_kb_context(question, limit=4), 1200)
+    prompt = (
+        f"Memoria recente da conversa:\n{memory_context}\n\n"
+        f"Base de conhecimento interna:\n{kb_context}\n\n"
+        f"Pergunta:\n{composed_question}\n\n"
+        "Responda direto e apenas com a resposta final."
+    )
+    answer, source = run_ai_router(prompt, question, "", False)
+    if answer:
+        save_ai_message(user, conversation_id, "assistant", answer, source, "file_summary")
+        return jsonify({"answer": answer, "source": source, "conversation_id": conversation_id})
+
+    fallback = "Nao consegui resumir o arquivo agora. Tente novamente."
+    save_ai_message(user, conversation_id, "assistant", fallback, "Nemo Local Fallback", "local")
+    return jsonify({"answer": fallback, "source": "Nemo Local Fallback", "conversation_id": conversation_id})
+
+
 @app.get("/api/ai/generated-image")
 def ai_generated_image():
     _, err = require_auth()
@@ -2208,60 +2415,10 @@ def ai_ask():
                     return jsonify({"answer": clean_answer, "source": "Gemini", "conversation_id": conversation_id})
             except requests.RequestException:
                 pass
-    provider = choose_ai_provider(question, image_text)
-    if provider == "gemini":
-        try:
-            answer = query_gemini(prompt, NEMO_SYSTEM_PROMPT)
-            if answer:
-                clean_answer = compact_text(strip_reasoning(answer), 3500)
-                if spreadsheet_mode:
-                    clean_answer = cleanup_spreadsheet_answer(clean_answer)
-                save_ai_message(user, conversation_id, "assistant", clean_answer, "Gemini", "auto_router")
-                return jsonify({"answer": clean_answer, "source": "Gemini", "conversation_id": conversation_id})
-        except requests.RequestException:
-            pass
-        try:
-            answer = query_deepseek(prompt, NEMO_SYSTEM_PROMPT)
-            if answer:
-                clean_answer = compact_text(strip_reasoning(answer), 3500)
-                if spreadsheet_mode:
-                    clean_answer = cleanup_spreadsheet_answer(clean_answer)
-                save_ai_message(user, conversation_id, "assistant", clean_answer, "DeepSeek", "auto_router")
-                return jsonify({"answer": clean_answer, "source": "DeepSeek", "conversation_id": conversation_id})
-        except requests.RequestException:
-            pass
-    else:
-        try:
-            answer = query_deepseek(prompt, NEMO_SYSTEM_PROMPT)
-            if answer:
-                clean_answer = compact_text(strip_reasoning(answer), 3500)
-                if spreadsheet_mode:
-                    clean_answer = cleanup_spreadsheet_answer(clean_answer)
-                save_ai_message(user, conversation_id, "assistant", clean_answer, "DeepSeek", "auto_router")
-                return jsonify({"answer": clean_answer, "source": "DeepSeek", "conversation_id": conversation_id})
-        except requests.RequestException:
-            pass
-        try:
-            answer = query_gemini(prompt, NEMO_SYSTEM_PROMPT)
-            if answer:
-                clean_answer = compact_text(strip_reasoning(answer), 3500)
-                if spreadsheet_mode:
-                    clean_answer = cleanup_spreadsheet_answer(clean_answer)
-                save_ai_message(user, conversation_id, "assistant", clean_answer, "Gemini", "auto_router")
-                return jsonify({"answer": clean_answer, "source": "Gemini", "conversation_id": conversation_id})
-        except requests.RequestException:
-            pass
-
-    try:
-        answer = query_pollinations(prompt)
-        if answer:
-            clean_answer = compact_text(strip_reasoning(answer), 3500)
-            if spreadsheet_mode:
-                clean_answer = cleanup_spreadsheet_answer(clean_answer)
-            save_ai_message(user, conversation_id, "assistant", clean_answer, "Pollinations AI", "auto_router")
-            return jsonify({"answer": clean_answer, "source": "Pollinations AI", "conversation_id": conversation_id})
-    except requests.RequestException:
-        pass
+    answer, source = run_ai_router(prompt, question, image_text, spreadsheet_mode)
+    if answer:
+        save_ai_message(user, conversation_id, "assistant", answer, source, "auto_router")
+        return jsonify({"answer": answer, "source": source, "conversation_id": conversation_id})
 
     fallback = build_local_answer(question, image_text, context_web)
     save_ai_message(user, conversation_id, "assistant", fallback, "Nemo Local Fallback", "local")

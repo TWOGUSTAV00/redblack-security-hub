@@ -334,17 +334,19 @@ async function onAiAsk() {
   if (aiBusy) return;
   const input = document.getElementById("ai-question");
   const imageInput = document.getElementById("ai-image");
+  const docInput = document.getElementById("ai-doc");
   const askBtn = document.getElementById("ai-ask-btn");
   const file = imageInput?.files?.[0] || null;
+  const docFile = docInput?.files?.[0] || null;
   const questionRaw = input.value.trim();
-  if (!questionRaw && !file) return;
+  if (!questionRaw && !file && !docFile) return;
   aiBusy = true;
   if (askBtn) askBtn.disabled = true;
 
   try {
     if (!currentConversationId) await createNewChat();
-    const question = questionRaw || "Explique e resolva com base na imagem enviada.";
-    const displayText = questionRaw || (file ? "Imagem enviada" : "Pergunta enviada");
+    const question = questionRaw || (docFile ? "Resuma o arquivo enviado." : "Explique e resolva com base na imagem enviada.");
+    const displayText = questionRaw || (docFile ? "Arquivo enviado" : (file ? "Imagem enviada" : "Pergunta enviada"));
     input.value = "";
     appendAiMessage("user", displayText);
     lastAiItems = [...lastAiItems, { role: "user", content: question }];
@@ -359,15 +361,31 @@ async function onAiAsk() {
       imageInput.value = "";
     }
 
-    const resp = await api("/api/ai/ask", {
-      method: "POST",
-      body: JSON.stringify({
-        question,
-        conversation_id: currentConversationId,
-        image_text: imageText,
-        image_base64: imageBase64,
-      }),
-    });
+    let resp;
+    if (docFile) {
+      const fd = new FormData();
+      fd.append("file", docFile);
+      fd.append("question", question);
+      fd.append("conversation_id", currentConversationId);
+      const res = await fetch("/api/ai/upload", {
+        method: "POST",
+        body: fd,
+        credentials: "same-origin",
+      });
+      resp = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(resp.error || `Falha HTTP ${res.status}`);
+      docInput.value = "";
+    } else {
+      resp = await api("/api/ai/ask", {
+        method: "POST",
+        body: JSON.stringify({
+          question,
+          conversation_id: currentConversationId,
+          image_text: imageText,
+          image_base64: imageBase64,
+        }),
+      });
+    }
 
     const answer = resp?.answer || "";
     appendAiMessage("assistant", "");
