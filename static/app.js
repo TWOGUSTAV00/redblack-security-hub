@@ -932,6 +932,14 @@ function bindEvents() {
   });
 
   bind("ai-ask-btn", "click", onAiAsk);
+  bind("ai-image", "change", () => {
+    const f = document.getElementById("ai-image")?.files?.[0];
+    if (!f) return;
+    if (aiBusy) return;
+    const status = document.getElementById("ai-status");
+    if (status) status.textContent = "Imagem selecionada. Enviando...";
+    onAiAsk();
+  });
   bind("ai-new-chat-btn", "click", createNewChat);
   bind("ai-refresh-btn", "click", async () => {
     await loadConversations();
