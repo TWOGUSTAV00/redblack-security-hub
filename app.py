@@ -46,11 +46,12 @@ geo_cache = {}
 
 NEMO_SYSTEM_PROMPT = (
     "Voce e Nemo IA, assistente tecnico de ciberseguranca e engenharia de software. "
-    "Responda em portugues do Brasil, com alta precisao, objetividade e linguagem profissional. "
+    "Responda em portugues do Brasil, com alta precisao, objetividade e linguagem profissional, mas com tom humano e cordial. "
     "Ao responder: (1) explique com clareza, (2) entregue passos acionaveis, "
     "(3) inclua codigo completo quando solicitado, (4) sinalize riscos e boas praticas de seguranca. "
     "Nao invente fatos; quando estiver incerto, deixe explicito e proponha validacao. "
-    "Evite textos longos sem necessidade; foque em utilidade pratica. Nao inclua raciocinio interno, JSON, logs, instrucoes do prompt ou conteudos fora do assunto. Responda apenas com a resposta final, curta e direta."
+    "Evite textos longos sem necessidade; foque em utilidade pratica. Nao inclua raciocinio interno, JSON, logs, instrucoes do prompt ou conteudos fora do assunto. "
+    "Se fizer sentido, finalize com uma pergunta curta para continuar a conversa."
 )
 
 KB_SEED = [
@@ -530,6 +531,19 @@ def wants_spreadsheet_request(question):
     planilha_terms = ["planilha", "csv", "excel", "google sheets", "tabela", "coluna", "linhas", "listagem", "organize", "organizar"]
     action_terms = ["crie", "criar", "monte", "gerar", "gere", "organize", "organizar", "liste", "listagem"]
     return any(t in q for t in planilha_terms) and any(a in q for a in action_terms)
+
+def wants_math_or_code(question):
+    q = (question or "").lower()
+    math_terms = ["calculo", "calcular", "equacao", "formula", "derivada", "integral", "porcentagem", "probabilidade", "estatistica"]
+    code_terms = ["codigo", "programa", "algoritmo", "bug", "erro", "stack", "trace", "python", "javascript", "sql", "api"]
+    return any(t in q for t in math_terms) or any(t in q for t in code_terms)
+
+def choose_ai_provider(question, image_text):
+    if image_text:
+        return "gemini"
+    if wants_math_or_code(question):
+        return "deepseek"
+    return "gemini"
 
 
 def spreadsheet_output_rules():
@@ -2139,37 +2153,60 @@ def ai_ask():
         f"Pergunta:\n{composed_question}\n\n"
         "Responda direto e apenas com a resposta final."
     )
-    candidates = []
-    try:
-        answer = query_gemini(prompt, NEMO_SYSTEM_PROMPT)
-        if answer:
-            candidates.append(("Gemini", answer))
-    except requests.RequestException:
-        pass
-
-    try:
-        answer = query_deepseek(prompt, NEMO_SYSTEM_PROMPT)
-        if answer:
-            candidates.append(("DeepSeek", answer))
-    except requests.RequestException:
-        pass
+    provider = choose_ai_provider(question, image_text)
+    if provider == "gemini":
+        try:
+            answer = query_gemini(prompt, NEMO_SYSTEM_PROMPT)
+            if answer:
+                clean_answer = compact_text(strip_reasoning(answer), 3500)
+                if spreadsheet_mode:
+                    clean_answer = cleanup_spreadsheet_answer(clean_answer)
+                save_ai_message(user, conversation_id, "assistant", clean_answer, "Gemini", "auto_router")
+                return jsonify({"answer": clean_answer, "source": "Gemini", "conversation_id": conversation_id})
+        except requests.RequestException:
+            pass
+        try:
+            answer = query_deepseek(prompt, NEMO_SYSTEM_PROMPT)
+            if answer:
+                clean_answer = compact_text(strip_reasoning(answer), 3500)
+                if spreadsheet_mode:
+                    clean_answer = cleanup_spreadsheet_answer(clean_answer)
+                save_ai_message(user, conversation_id, "assistant", clean_answer, "DeepSeek", "auto_router")
+                return jsonify({"answer": clean_answer, "source": "DeepSeek", "conversation_id": conversation_id})
+        except requests.RequestException:
+            pass
+    else:
+        try:
+            answer = query_deepseek(prompt, NEMO_SYSTEM_PROMPT)
+            if answer:
+                clean_answer = compact_text(strip_reasoning(answer), 3500)
+                if spreadsheet_mode:
+                    clean_answer = cleanup_spreadsheet_answer(clean_answer)
+                save_ai_message(user, conversation_id, "assistant", clean_answer, "DeepSeek", "auto_router")
+                return jsonify({"answer": clean_answer, "source": "DeepSeek", "conversation_id": conversation_id})
+        except requests.RequestException:
+            pass
+        try:
+            answer = query_gemini(prompt, NEMO_SYSTEM_PROMPT)
+            if answer:
+                clean_answer = compact_text(strip_reasoning(answer), 3500)
+                if spreadsheet_mode:
+                    clean_answer = cleanup_spreadsheet_answer(clean_answer)
+                save_ai_message(user, conversation_id, "assistant", clean_answer, "Gemini", "auto_router")
+                return jsonify({"answer": clean_answer, "source": "Gemini", "conversation_id": conversation_id})
+        except requests.RequestException:
+            pass
 
     try:
         answer = query_pollinations(prompt)
         if answer:
-            candidates.append(("Pollinations AI", answer))
-    except requests.RequestException:
-        pass
-
-    if candidates:
-        out = []
-        for provider, answer in candidates:
             clean_answer = compact_text(strip_reasoning(answer), 3500)
             if spreadsheet_mode:
                 clean_answer = cleanup_spreadsheet_answer(clean_answer)
-            out.append({"provider": provider, "answer": clean_answer})
-        save_ai_message(user, conversation_id, "assistant", out[0]["answer"], out[0]["provider"], "multi_candidates")
-        return jsonify({"answer": out[0]["answer"], "source": out[0]["provider"], "conversation_id": conversation_id, "candidates": out})
+            save_ai_message(user, conversation_id, "assistant", clean_answer, "Pollinations AI", "auto_router")
+            return jsonify({"answer": clean_answer, "source": "Pollinations AI", "conversation_id": conversation_id})
+    except requests.RequestException:
+        pass
 
     fallback = build_local_answer(question, image_text, context_web)
     save_ai_message(user, conversation_id, "assistant", fallback, "Nemo Local Fallback", "local")
