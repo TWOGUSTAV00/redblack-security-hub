@@ -258,6 +258,31 @@ function appendAiMessage(role, content, tempId = null) {
   stream.scrollTop = stream.scrollHeight;
 }
 
+function appendAiImageMessage(role, dataUrl, caption) {
+  const stream = document.getElementById("ai-chat-stream");
+  if (!stream) return;
+  const roleClass = role === "user" ? "user" : "assistant";
+  const avatar = role === "user" ? "VC" : "N";
+  const name = role === "user" ? "Voce" : "Nemo IA";
+  const safeCaption = escapeHtml(caption || "");
+  stream.insertAdjacentHTML("beforeend", `
+    <div class="ai-msg ${roleClass}" data-raw="${encodeURIComponent(caption || "")}">
+      <div class="ai-avatar">${avatar}</div>
+      <div class="ai-bubble">
+        <div class="ai-header">
+          <div class="ai-role">${name}</div>
+          ${role === "assistant" ? '<button class="copy-msg" type="button">Copiar</button>' : ""}
+        </div>
+        <div class="ai-content">
+          <img class="ai-image" src="${dataUrl}" alt="imagem enviada" />
+          ${safeCaption ? `<div class="ai-text">${safeCaption}</div>` : ""}
+        </div>
+      </div>
+    </div>
+  `);
+  stream.scrollTop = stream.scrollHeight;
+}
+
 function typewriter(el, text, speed = 12) {
   if (!el) return;
   const raw = text || "";
@@ -348,7 +373,6 @@ async function onAiAsk() {
     const question = questionRaw || (docFile ? "Resuma o arquivo enviado." : "Explique e resolva com base na imagem enviada.");
     const displayText = questionRaw || (docFile ? "Arquivo enviado" : (file ? "Imagem enviada" : "Pergunta enviada"));
     input.value = "";
-    appendAiMessage("user", displayText);
     lastAiItems = [...lastAiItems, { role: "user", content: question }];
     setAiTyping(true);
     let imageText = "";
@@ -359,6 +383,11 @@ async function onAiAsk() {
       }
       imageText = await ocrWithTimeout(file, 8000);
       imageInput.value = "";
+    }
+    if (file && imageBase64) {
+      appendAiImageMessage("user", imageBase64, questionRaw || "");
+    } else {
+      appendAiMessage("user", displayText);
     }
 
     let resp;
