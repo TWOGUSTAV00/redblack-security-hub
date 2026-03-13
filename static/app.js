@@ -356,10 +356,24 @@ async function onAiAsk() {
     });
 
     const answer = resp?.answer || "";
+    const candidates = resp?.candidates || [];
     appendAiMessage("assistant", "");
     const lastContainer = document.querySelector("#ai-chat-stream .ai-msg.assistant:last-child");
     const lastMsg = lastContainer ? lastContainer.querySelector(".ai-content") : null;
-    if (lastContainer) lastContainer.dataset.raw = encodeURIComponent(answer);
+    if (lastContainer) {
+      lastContainer.dataset.raw = encodeURIComponent(answer);
+      if (candidates.length) {
+        const pick = document.createElement("div");
+        pick.className = "ai-pick";
+        pick.innerHTML = `
+          <div class="ai-pick-title">Escolha a melhor resposta</div>
+          <div class="ai-pick-actions">
+            ${candidates.map((c, i) => `<button class="pick-btn" data-provider="${escapeHtml(c.provider)}" data-answer="${encodeURIComponent(c.answer)}">Resposta ${i + 1} - ${escapeHtml(c.provider)}</button>`).join("")}
+          </div>
+        `;
+        lastContainer.appendChild(pick);
+      }
+    }
     if (lastMsg) typewriter(lastMsg, answer, 10);
     lastAiItems = [...lastAiItems, { role: "assistant", content: answer }];
     await loadConversations();
@@ -910,6 +924,18 @@ function bindEvents() {
   const aiStream = document.getElementById("ai-chat-stream");
   if (aiStream) {
     aiStream.addEventListener("click", async (e) => {
+      const pickBtn = e.target.closest(".pick-btn");
+      if (pickBtn) {
+        const msg = pickBtn.closest(".ai-msg");
+        const raw = decodeURIComponent(pickBtn.dataset.answer || "");
+        if (msg && raw) {
+          msg.dataset.raw = encodeURIComponent(raw);
+          const content = msg.querySelector(".ai-content");
+          if (content) content.innerHTML = renderAiContent(raw);
+          pickBtn.closest(".ai-pick")?.remove();
+        }
+        return;
+      }
       const msgBtn = e.target.closest(".copy-msg");
       if (msgBtn) {
         const msg = msgBtn.closest(".ai-msg");

@@ -2139,38 +2139,37 @@ def ai_ask():
         f"Pergunta:\n{composed_question}\n\n"
         "Responda direto e apenas com a resposta final."
     )
+    candidates = []
     try:
         answer = query_gemini(prompt, NEMO_SYSTEM_PROMPT)
         if answer:
-            clean_answer = compact_text(strip_reasoning(answer), 3500)
-            if spreadsheet_mode:
-                clean_answer = cleanup_spreadsheet_answer(clean_answer)
-            save_ai_message(user, conversation_id, "assistant", clean_answer, "Gemini", "web_lookup")
-            return jsonify({"answer": clean_answer, "source": "Gemini", "conversation_id": conversation_id})
+            candidates.append(("Gemini", answer))
     except requests.RequestException:
         pass
 
     try:
         answer = query_deepseek(prompt, NEMO_SYSTEM_PROMPT)
         if answer:
-            clean_answer = compact_text(strip_reasoning(answer), 3500)
-            if spreadsheet_mode:
-                clean_answer = cleanup_spreadsheet_answer(clean_answer)
-            save_ai_message(user, conversation_id, "assistant", clean_answer, "DeepSeek", "web_lookup")
-            return jsonify({"answer": clean_answer, "source": "DeepSeek", "conversation_id": conversation_id})
+            candidates.append(("DeepSeek", answer))
     except requests.RequestException:
         pass
 
     try:
         answer = query_pollinations(prompt)
         if answer:
+            candidates.append(("Pollinations AI", answer))
+    except requests.RequestException:
+        pass
+
+    if candidates:
+        out = []
+        for provider, answer in candidates:
             clean_answer = compact_text(strip_reasoning(answer), 3500)
             if spreadsheet_mode:
                 clean_answer = cleanup_spreadsheet_answer(clean_answer)
-            save_ai_message(user, conversation_id, "assistant", clean_answer, "Pollinations AI", "web_lookup")
-            return jsonify({"answer": clean_answer, "source": "Pollinations AI", "conversation_id": conversation_id})
-    except requests.RequestException:
-        pass
+            out.append({"provider": provider, "answer": clean_answer})
+        save_ai_message(user, conversation_id, "assistant", out[0]["answer"], out[0]["provider"], "multi_candidates")
+        return jsonify({"answer": out[0]["answer"], "source": out[0]["provider"], "conversation_id": conversation_id, "candidates": out})
 
     fallback = build_local_answer(question, image_text, context_web)
     save_ai_message(user, conversation_id, "assistant", fallback, "Nemo Local Fallback", "local")
