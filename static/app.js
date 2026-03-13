@@ -16,6 +16,7 @@ let isRecording = false;
 let recordingPaused = false;
 let pendingSend = false;
 let discardRecording = false;
+const chatRenderState = {};
 const PAUSE_ICON = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg>';
 const PLAY_ICON = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 5l11 7-11 7z"/></svg>';
 
@@ -333,7 +334,8 @@ function renderUsers(items) {
       selectedGroupId = null;
       selectedPeer = btn.dataset.peer;
       document.getElementById("chat-title").textContent = `Chat com ${selectedPeer}`;
-      await loadMessages();
+      resetChatRenderState();
+      await loadMessages(true);
       await loadTyping();
     });
   });
@@ -356,7 +358,8 @@ function renderGroups(items) {
       selectedPeer = null;
       selectedGroupId = Number(btn.dataset.group);
       document.getElementById("chat-title").textContent = `Grupo #${selectedGroupId}`;
-      await loadMessages();
+      resetChatRenderState();
+      await loadMessages(true);
       document.getElementById("chat-typing").textContent = "";
     });
   });
@@ -411,16 +414,44 @@ function renderMessages(items) {
   initAudioPlayers();
 }
 
-async function loadMessages() {
+function getChatKey(items) {
+  const last = items && items.length ? items[items.length - 1] : null;
+  const lastId = last && last.id ? Number(last.id) : 0;
+  return `${items.length}:${lastId}`;
+}
+
+function resetChatRenderState() {
+  Object.keys(chatRenderState).forEach((k) => {
+    delete chatRenderState[k];
+  });
+}
+
+function shouldRenderChat(key, force) {
+  if (force) return true;
+  if (chatRenderState[key]) return false;
+  return true;
+}
+
+async function loadMessages(force = false) {
   try {
     if (selectedGroupId) {
       const data = await api(`/api/chat/groups/${selectedGroupId}/messages?limit=200`, { method: "GET", headers: {} });
-      renderMessages(data.items || []);
+      const items = data.items || [];
+      const key = `group:${selectedGroupId}:${getChatKey(items)}`;
+      if (shouldRenderChat(key, force)) {
+        chatRenderState[key] = true;
+        renderMessages(items);
+      }
       return;
     }
     if (!selectedPeer) return;
     const data = await api(`/api/chat/messages?with=${encodeURIComponent(selectedPeer)}&limit=200`, { method: "GET", headers: {} });
-    renderMessages(data.items || []);
+    const items = data.items || [];
+    const key = `peer:${selectedPeer}:${getChatKey(items)}`;
+    if (shouldRenderChat(key, force)) {
+      chatRenderState[key] = true;
+      renderMessages(items);
+    }
   } catch {}
 }
 
@@ -496,7 +527,7 @@ async function onChatSend() {
     recordedAudioBlob = null;
     const statusEl = document.getElementById("upload-status");
     if (statusEl) statusEl.textContent = "";
-    await loadMessages();
+    await loadMessages(true);
   } catch (err) {
     alert(`Erro ao enviar: ${err.message}`);
   }
@@ -598,6 +629,15 @@ async function startRecording() {
   mediaRecorder = new MediaRecorder(stream);
   mediaRecorder.ondataavailable = (e) => { if (e.data?.size) chunks.push(e.data); };
   mediaRecorder.onstop = () => {
+    if (!chunks.length) {
+      recordedAudioBlob = null;
+      pendingSend = false;
+      discardRecording = false;
+      const status = document.getElementById("upload-status");
+      if (status) status.textContent = "Falha ao gravar audio.";
+      toggleRecordingUI(false);
+      return;
+    }
     const blob = new Blob(chunks, { type: "audio/webm" });
     blob.name = "audio-recorded.webm";
     if (!discardRecording) recordedAudioBlob = blob;
@@ -622,7 +662,7 @@ async function startRecording() {
   source.connect(analyserNode);
   startMeter();
 
-  mediaRecorder.start();
+  mediaRecorder.start(200);
   isRecording = true;
   const pauseBtn = document.getElementById("rec-pause");
   if (pauseBtn) pauseBtn.innerHTML = PAUSE_ICON;
@@ -844,4 +884,3 @@ function boot() {
 }
 
 document.addEventListener("DOMContentLoaded", boot);
-
