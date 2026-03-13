@@ -401,7 +401,19 @@ function renderUsers(items) {
   }
   list.innerHTML = items.map((u) => {
     const active = selectedPeer === u.username && !selectedGroupId ? " active" : "";
-    return `<button class=\"${active ? "active" : ""}\" data-peer=\"${escapeHtml(u.username)}\">${escapeHtml(u.username)} ${u.online ? "(online)" : ""}</button>`;
+    const initials = escapeHtml((u.username || "?").slice(0, 2).toUpperCase());
+    const status = u.online ? "Online" : "Offline";
+    return `
+      <button class="${active ? "active" : ""}" data-peer="${escapeHtml(u.username)}">
+        <div class="chat-row">
+          <div class="chat-row-avatar">${initials}</div>
+          <div class="chat-row-meta">
+            <div class="chat-row-title">${escapeHtml(u.username)}</div>
+            <div class="chat-row-sub">${status}</div>
+          </div>
+        </div>
+      </button>
+    `;
   }).join("");
 
   list.querySelectorAll("[data-peer]").forEach((btn) => {
@@ -409,6 +421,8 @@ function renderUsers(items) {
       selectedGroupId = null;
       selectedPeer = btn.dataset.peer;
       document.getElementById("chat-title").textContent = `Chat com ${selectedPeer}`;
+      const avatar = document.getElementById("chat-avatar");
+      if (avatar) avatar.textContent = (selectedPeer || "?").slice(0, 2).toUpperCase();
       resetChatRenderState();
       await loadMessages(true);
       await loadTyping();
@@ -433,11 +447,21 @@ function renderGroups(items) {
       selectedPeer = null;
       selectedGroupId = Number(btn.dataset.group);
       document.getElementById("chat-title").textContent = `Grupo #${selectedGroupId}`;
+      const avatar = document.getElementById("chat-avatar");
+      if (avatar) avatar.textContent = "GR";
       resetChatRenderState();
       await loadMessages(true);
       document.getElementById("chat-typing").textContent = "";
     });
   });
+}
+
+function formatChatTime(ts) {
+  if (!ts) return "";
+  const cleaned = String(ts).replace(" ", "T");
+  const d = new Date(cleaned);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
 async function loadUsers() {
@@ -468,6 +492,7 @@ function renderMessages(items) {
   box.innerHTML = items.map((m) => {
     const mine = selectedGroupId ? false : (m.sender !== selectedPeer);
     const who = selectedGroupId ? `<strong>${escapeHtml(m.sender || "")}</strong><br/>` : "";
+    const time = `<span class="chat-time">${formatChatTime(m.created_at)}</span>`;
     const text = m.message_text ? `<div>${escapeHtml(m.message_text)}</div>` : "";
     const image = m.message_type === "image" && m.file_url ? `<img src=\"${escapeHtml(m.file_url)}\" alt=\"imagem\" />` : "";
     const video = m.message_type === "video" && m.file_url ? `<video controls src=\"${escapeHtml(m.file_url)}\"></video>` : "";
@@ -483,7 +508,7 @@ function renderMessages(items) {
         </div>
       </div>
     ` : "";
-    return `<div class=\"chat-msg ${mine ? "mine" : "peer"}\">${who}${text}${image}${video}${audio}</div>`;
+    return `<div class=\"chat-msg ${mine ? "mine" : "peer"}\">${who}${text}${image}${video}${audio}${time}</div>`;
   }).join("");
   box.scrollTop = box.scrollHeight;
   initAudioPlayers();
@@ -949,6 +974,21 @@ function bindEvents() {
     await loadUsers();
     await loadGroups();
   });
+  bind("emoji-btn", "click", () => {
+    const panel = document.getElementById("emoji-panel");
+    if (panel) panel.classList.toggle("hidden");
+  });
+  const emojiPanel = document.getElementById("emoji-panel");
+  if (emojiPanel) {
+    emojiPanel.addEventListener("click", (e) => {
+      const btn = e.target.closest(".emoji");
+      if (!btn) return;
+      const input = document.getElementById("chat-text");
+      if (input) input.value += btn.textContent;
+      emojiPanel.classList.add("hidden");
+      input?.focus();
+    });
+  }
   bind("group-refresh-btn", "click", loadGroups);
   bind("group-create-btn", "click", onCreateGroup);
   bind("chat-send", "click", onChatSend);
