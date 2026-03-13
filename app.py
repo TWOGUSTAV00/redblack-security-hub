@@ -16,7 +16,7 @@ import requests
 from flask import Flask, Response, jsonify, render_template, request, session
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
+from googleapiclient.http import MediaFileUpload, MediaIoBaseUpload
 from werkzeug.exceptions import HTTPException
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
@@ -140,6 +140,8 @@ def ensure_users_schema(conn):
         conn.execute("ALTER TABLE users ADD COLUMN is_banned INTEGER NOT NULL DEFAULT 0")
     if "avatar_path" not in cols:
         conn.execute("ALTER TABLE users ADD COLUMN avatar_path TEXT")
+    if "avatar_drive_id" not in cols:
+        conn.execute("ALTER TABLE users ADD COLUMN avatar_drive_id TEXT")
 
 
 def ensure_knowledge_base_seed(conn):
@@ -581,6 +583,51 @@ def upload_to_drive(local_path, username):
     created = service.files().create(body=metadata, media_body=media, fields="id").execute()
     return created.get("id")
 
+def upsert_drive_file(service, folder_id, filename, content_bytes, mime_type="application/json"):
+    if not service or not folder_id:
+        return None
+    q = (
+        f"name='{filename}' and '{folder_id}' in parents and trashed=false"
+    )
+    res = service.files().list(q=q, fields="files(id,name)").execute()
+    files = res.get("files") or []
+    media = MediaIoBaseUpload(BytesIO(content_bytes), mimetype=mime_type, resumable=False)
+    if files:
+        file_id = files[0]["id"]
+        service.files().update(fileId=file_id, media_body=media).execute()
+        return file_id
+    created = service.files().create(
+        body={"name": filename, "parents": [folder_id]},
+        media_body=media,
+        fields="id",
+    ).execute()
+    return created.get("id")
+
+def sync_user_profile_to_drive(username, event_type="login"):
+    service = get_drive_service()
+    if not service:
+        return None
+    folder_id = ensure_user_drive_folder(service, username)
+    if not folder_id:
+        return None
+    conn = db_conn()
+    row = conn.execute(
+        "SELECT username, created_at, avatar_drive_id FROM users WHERE username = ?",
+        (username,),
+    ).fetchone()
+    conn.close()
+    if not row:
+        return None
+    payload = {
+        "username": row["username"],
+        "created_at": row["created_at"],
+        "avatar_drive_id": row["avatar_drive_id"],
+        "last_event": event_type,
+        "updated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    content = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    return upsert_drive_file(service, folder_id, "profile.json", content, "application/json")
+
 def extract_text_from_file(path):
     ext = Path(path).suffix.lower()
     if ext == ".txt":
@@ -1014,6 +1061,7 @@ def auth_register():
     conn.close()
     record_access("register", username)
     record_user_change(username, "register", f"ip={extract_client_ip()}")
+    sync_user_profile_to_drive(username, "register")
     return jsonify({"ok": True, "message": "Conta criada"})
 
 
@@ -1054,6 +1102,7 @@ def auth_login():
     session["username"] = row["username"]
     set_user_active(row["username"])
     record_access("login_success", row["username"])
+    sync_user_profile_to_drive(row["username"], "login")
     return jsonify({"ok": True, "username": row["username"], "is_admin": is_admin(row["username"])})
 
 
@@ -1135,6 +1184,7 @@ def profile_rename():
     session["username"] = new_username
     record_access("profile_rename", new_username, f"old={user}")
     record_user_change(new_username, "profile_rename", f"old={user}")
+    sync_user_profile_to_drive(new_username, "profile_rename")
     return jsonify({"ok": True, "username": new_username})
 
 
@@ -1150,11 +1200,16 @@ def profile_avatar():
         return jsonify({"error": "Arquivo de avatar invalido"}), 400
 
     conn = db_conn()
-    conn.execute("UPDATE users SET avatar_path = ? WHERE username = ?", (file_path, user))
+    drive_id = upload_to_drive(file_path, user)
+    conn.execute(
+        "UPDATE users SET avatar_path = ?, avatar_drive_id = ? WHERE username = ?",
+        (file_path, drive_id, user),
+    )
     conn.commit()
     conn.close()
 
     record_user_change(user, "profile_avatar", f"file={Path(file_path).name}")
+    sync_user_profile_to_drive(user, "profile_avatar")
     return jsonify({"ok": True, "avatar_url": to_public_file_url(file_path)})
 
 

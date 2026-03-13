@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/styles.css?v=20260313k" />
+  <link rel="stylesheet" href="/static/styles.css?v=20260313l" />
 </head>
 <body>
   <div class="bg-orb orb-1"></div>
@@ -66,6 +66,7 @@
       <div class="app-tabs">
         <button class="tab-btn active" data-tab="ai">Nemo IA</button>
         <button class="tab-btn" data-tab="chat">Conversas</button>
+        <button class="tab-btn" data-tab="profile">Perfil</button>
         <button class="tab-btn admin-only" data-tab="admin">Admin</button>
       </div>
 
@@ -230,6 +231,21 @@
         </div>
       </section>
 
+      <section id="tab-profile" class="tab-panel">
+        <div class="admin-card">
+          <h3>Perfil</h3>
+          <label for="profile-name">Nome</label>
+          <input id="profile-name" placeholder="Seu nome" />
+          <label for="profile-pass">Senha (obrigatoria para mudar nome)</label>
+          <input id="profile-pass" type="password" placeholder="Sua senha" />
+          <button id="profile-save" class="btn-primary" type="button">Salvar nome</button>
+          <label for="profile-avatar">Foto de perfil</label>
+          <input id="profile-avatar" type="file" accept="image/*" />
+          <button id="profile-avatar-btn" class="btn-ghost" type="button">Enviar foto</button>
+          <div id="profile-status" class="muted"></div>
+        </div>
+      </section>
+
       <section id="tab-admin" class="tab-panel">
         <div class="admin-shell">
           <div class="admin-card">
@@ -260,7 +276,7 @@
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="/static/app.js?v=20260313k"></script>
+  <script src="/static/app.js?v=20260313l"></script>
 </body>
 </html>
 

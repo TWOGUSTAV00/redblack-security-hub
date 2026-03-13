@@ -77,6 +77,7 @@ function showApp(user, adminFlag) {
   });
   setTab("ai");
   loadConversations().then(loadAiHistory);
+  loadProfile();
   startSocialPolling();
   if (isAdmin) loadAdmin();
 }
@@ -144,6 +145,7 @@ function setTab(name) {
   document.querySelectorAll(".tab-panel").forEach((panel) => {
     panel.classList.toggle("active", panel.id === `tab-${name}`);
   });
+  if (name === "profile") loadProfile();
 }
 
 function renderConversations(items) {
@@ -644,6 +646,54 @@ async function setTypingState(isTyping) {
   }).catch(() => null);
 }
 
+async function loadProfile() {
+  try {
+    const data = await api("/api/profile", { method: "GET", headers: {} });
+    const nameInput = document.getElementById("profile-name");
+    if (nameInput) nameInput.value = data.username || "";
+  } catch {}
+}
+
+async function saveProfileName() {
+  const nameInput = document.getElementById("profile-name");
+  const passInput = document.getElementById("profile-pass");
+  const status = document.getElementById("profile-status");
+  const newName = (nameInput?.value || "").trim();
+  const password = passInput?.value || "";
+  if (!newName || !password) {
+    if (status) status.textContent = "Informe nome e senha.";
+    return;
+  }
+  try {
+    const data = await api("/api/profile/rename", {
+      method: "POST",
+      body: JSON.stringify({ new_username: newName, password }),
+    });
+    if (status) status.textContent = "Nome atualizado.";
+    document.getElementById("welcome-user").textContent = `Logado como: ${data.username}${isAdmin ? " (ADMIN)" : ""}`;
+    await loadUsers();
+  } catch (err) {
+    if (status) status.textContent = err.message;
+  }
+}
+
+async function uploadProfileAvatar() {
+  const file = document.getElementById("profile-avatar")?.files?.[0];
+  const status = document.getElementById("profile-status");
+  if (!file) {
+    if (status) status.textContent = "Selecione uma imagem.";
+    return;
+  }
+  const fd = new FormData();
+  fd.append("avatar", file);
+  try {
+    await api("/api/profile/avatar", { method: "POST", body: fd });
+    if (status) status.textContent = "Foto atualizada.";
+  } catch (err) {
+    if (status) status.textContent = err.message;
+  }
+}
+
 function sendWithProgress(url, formData) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -1117,6 +1167,8 @@ function bindEvents() {
   bind("group-refresh-btn", "click", loadGroups);
   bind("group-create-btn", "click", onCreateGroup);
   bind("chat-send", "click", onChatSend);
+  bind("profile-save", "click", saveProfileName);
+  bind("profile-avatar-btn", "click", uploadProfileAvatar);
   bind("chat-media", "change", () => {
     const f = document.getElementById("chat-media")?.files?.[0];
     if (f) document.getElementById("upload-status").textContent = "Arquivo pronto: " + f.name;

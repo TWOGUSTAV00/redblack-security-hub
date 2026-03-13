@@ -819,6 +819,10 @@ main { width: min(1200px, 92vw); margin: 0 auto 60px; }
   gap: 10px;
 }
 
+#tab-profile .admin-card {
+  max-width: 520px;
+}
+
 .admin-card input, .admin-card select {
   width: 100%;
   padding: 8px 10px;
