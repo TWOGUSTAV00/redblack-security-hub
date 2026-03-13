@@ -493,6 +493,10 @@ main { width: min(1200px, 92vw); margin: 0 auto 60px; }
   z-index: 4;
 }
 
+.msg-menu.hidden {
+  display: none;
+}
+
 .msg-menu .msg-action {
   background: transparent;
   border: none;
@@ -673,6 +677,10 @@ main { width: min(1200px, 92vw); margin: 0 auto 60px; }
   padding: 10px 12px;
 }
 
+.record-bar.hidden {
+  display: none;
+}
+
 .record-wave {
   display: grid;
   gap: 6px;
@@ -710,6 +718,10 @@ main { width: min(1200px, 92vw); margin: 0 auto 60px; }
   border: 1px solid rgba(148, 163, 184, 0.25);
   border-radius: 12px;
   width: 320px;
+}
+
+.emoji-panel.hidden {
+  display: none;
 }
 
 .emoji-panel .emoji {
