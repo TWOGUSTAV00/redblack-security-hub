@@ -469,6 +469,48 @@ main { width: min(1200px, 92vw); margin: 0 auto 60px; }
 .chat-msg.mine { justify-self: end; background: rgba(225, 6, 46, 0.18); }
 .chat-msg.peer { justify-self: start; background: rgba(255,255,255,0.03); }
 
+.msg-menu-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  border: none;
+  background: transparent;
+  color: rgba(255,255,255,0.6);
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.msg-menu {
+  position: absolute;
+  top: 26px;
+  right: 6px;
+  background: #0f172a;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 10px;
+  padding: 6px;
+  display: grid;
+  gap: 6px;
+  z-index: 4;
+}
+
+.msg-menu .msg-action {
+  background: transparent;
+  border: none;
+  color: var(--text);
+  text-align: left;
+  padding: 6px 8px;
+  cursor: pointer;
+  border-radius: 8px;
+}
+
+.msg-menu .msg-action:hover {
+  background: rgba(255,255,255,0.08);
+}
+
+.msg-menu .msg-action.danger {
+  color: #ff9aa7;
+}
+
 .chat-time {
   display: block;
   margin-top: 6px;

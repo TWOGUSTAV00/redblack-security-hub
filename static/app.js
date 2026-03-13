@@ -508,7 +508,17 @@ function renderMessages(items) {
         </div>
       </div>
     ` : "";
-    return `<div class=\"chat-msg ${mine ? "mine" : "peer"}\">${who}${text}${image}${video}${audio}${time}</div>`;
+    return `
+      <div class="chat-msg ${mine ? "mine" : "peer"}" data-msg-id="${m.id}">
+        <button class="msg-menu-btn" type="button">▾</button>
+        <div class="msg-menu hidden">
+          <button class="msg-action" data-action="reply">Responder</button>
+          <button class="msg-action" data-action="copy">Copiar</button>
+          <button class="msg-action danger" data-action="delete">Apagar</button>
+        </div>
+        ${who}${text}${image}${video}${audio}${time}
+      </div>
+    `;
   }).join("");
   box.scrollTop = box.scrollHeight;
   initAudioPlayers();
@@ -973,6 +983,41 @@ function bindEvents() {
         codeBtn.textContent = "Copiado";
         setTimeout(() => { codeBtn.textContent = "Copiar"; }, 1200);
       }
+    });
+  }
+
+  const chatBox = document.getElementById("chat-messages");
+  if (chatBox) {
+    chatBox.addEventListener("click", async (e) => {
+      const menuBtn = e.target.closest(".msg-menu-btn");
+      if (menuBtn) {
+        const msg = menuBtn.closest(".chat-msg");
+        if (msg) {
+          msg.querySelector(".msg-menu")?.classList.toggle("hidden");
+        }
+        return;
+      }
+      const action = e.target.closest(".msg-action");
+      if (!action) return;
+      const msg = action.closest(".chat-msg");
+      const textEl = msg?.querySelector("div");
+      const actionType = action.dataset.action;
+      if (actionType === "copy" && textEl) {
+        await navigator.clipboard.writeText(textEl.textContent || "");
+        action.textContent = "Copiado";
+        setTimeout(() => { action.textContent = "Copiar"; }, 1200);
+      }
+      if (actionType === "reply" && textEl) {
+        const input = document.getElementById("chat-text");
+        if (input) {
+          input.value = `> ${textEl.textContent}\n`;
+          input.focus();
+        }
+      }
+      if (actionType === "delete" && msg) {
+        msg.remove();
+      }
+      msg?.querySelector(".msg-menu")?.classList.add("hidden");
     });
   }
 
