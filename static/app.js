@@ -721,8 +721,10 @@ function stopMeter() {
 function toggleRecordingUI(show) {
   const bar = document.getElementById("record-bar");
   const row = document.querySelector(".chat-input-row");
+  const status = document.getElementById("upload-status");
   if (bar) bar.classList.toggle("hidden", !show);
   if (row) row.style.display = show ? "none" : "grid";
+  if (status) status.textContent = "";
 }
 
 async function startRecording() {
@@ -734,6 +736,7 @@ async function startRecording() {
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   meterStream = stream;
   pendingSend = false;
+  toggleRecordingUI(true);
 
   const chunks = [];
   mediaRecorder = new MediaRecorder(stream);
@@ -776,7 +779,6 @@ async function startRecording() {
   isRecording = true;
   const pauseBtn = document.getElementById("rec-pause");
   if (pauseBtn) pauseBtn.innerHTML = PAUSE_ICON;
-  toggleRecordingUI(true);
 }
 
 function stopRecording() {
@@ -1040,6 +1042,14 @@ function bindEvents() {
       input?.focus();
     });
   }
+  document.addEventListener("click", (e) => {
+    const panel = document.getElementById("emoji-panel");
+    if (!panel) return;
+    if (panel.classList.contains("hidden")) return;
+    const isEmojiBtn = e.target.closest("#emoji-btn");
+    const isPanel = e.target.closest("#emoji-panel");
+    if (!isEmojiBtn && !isPanel) panel.classList.add("hidden");
+  });
   bind("group-refresh-btn", "click", loadGroups);
   bind("group-create-btn", "click", onCreateGroup);
   bind("chat-send", "click", onChatSend);
