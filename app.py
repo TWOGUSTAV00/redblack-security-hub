@@ -31,6 +31,8 @@ ALLOWED_VIDEO_EXT = {".mp4", ".webm", ".mov", ".mkv"}
 ADMIN_USERNAME = "Nemo"
 DEEPSEEK_API_KEY = (os.environ.get("DEEPSEEK_API_KEY") or "").strip()
 DEEPSEEK_MODEL = (os.environ.get("DEEPSEEK_MODEL") or "deepseek-chat").strip()
+GEMINI_API_KEY = (os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_AI_STUDIO_API_KEY") or "").strip()
+GEMINI_MODEL = (os.environ.get("GEMINI_MODEL") or "gemini-1.5-flash").strip()
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "nemo-redblack-secret-change-me")
@@ -569,6 +571,33 @@ def query_pollinations(prompt):
     resp = requests.get(url, timeout=20)
     resp.raise_for_status()
     return (resp.text or "").strip()
+
+
+def query_gemini(prompt, system_prompt=None):
+    if not GEMINI_API_KEY:
+        return ""
+    payload = {
+        "contents": [
+            {
+                "role": "user",
+                "parts": [{"text": compact_text(prompt, 5000)}],
+            }
+        ],
+    }
+    if system_prompt:
+        payload["systemInstruction"] = {
+            "parts": [{"text": compact_text(system_prompt, 2000)}],
+        }
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+    resp = requests.post(url, params={"key": GEMINI_API_KEY}, json=payload, timeout=30)
+    resp.raise_for_status()
+    data = resp.json()
+    candidates = data.get("candidates") or []
+    if not candidates:
+        return ""
+    parts = (candidates[0].get("content") or {}).get("parts") or []
+    texts = [p.get("text") for p in parts if p.get("text")]
+    return "\n".join(texts).strip()
 
 
 def query_deepseek(prompt, system_prompt=None):
@@ -2110,6 +2139,17 @@ def ai_ask():
         f"Pergunta:\n{composed_question}\n\n"
         "Responda direto e apenas com a resposta final."
     )
+    try:
+        answer = query_gemini(prompt, NEMO_SYSTEM_PROMPT)
+        if answer:
+            clean_answer = compact_text(strip_reasoning(answer), 3500)
+            if spreadsheet_mode:
+                clean_answer = cleanup_spreadsheet_answer(clean_answer)
+            save_ai_message(user, conversation_id, "assistant", clean_answer, "Gemini", "web_lookup")
+            return jsonify({"answer": clean_answer, "source": "Gemini", "conversation_id": conversation_id})
+    except requests.RequestException:
+        pass
+
     try:
         answer = query_deepseek(prompt, NEMO_SYSTEM_PROMPT)
         if answer:
