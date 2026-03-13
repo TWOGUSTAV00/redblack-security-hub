@@ -496,6 +496,18 @@ def compact_text(text, limit):
         return cleaned
     return cleaned[: max(0, limit - 3)] + "..."
 
+def parse_image_data_url(data_url):
+    if not data_url or not isinstance(data_url, str):
+        return None, None
+    if not data_url.startswith("data:"):
+        return None, None
+    try:
+        header, b64 = data_url.split(",", 1)
+        mime = header.split(";")[0].replace("data:", "").strip() or "image/png"
+        return mime, b64.strip()
+    except ValueError:
+        return None, None
+
 def strip_reasoning(text):
     s = (text or "").strip()
     if not s:
@@ -595,6 +607,35 @@ def query_gemini(prompt, system_prompt=None):
             {
                 "role": "user",
                 "parts": [{"text": compact_text(prompt, 5000)}],
+            }
+        ],
+    }
+    if system_prompt:
+        payload["systemInstruction"] = {
+            "parts": [{"text": compact_text(system_prompt, 2000)}],
+        }
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+    resp = requests.post(url, params={"key": GEMINI_API_KEY}, json=payload, timeout=30)
+    resp.raise_for_status()
+    data = resp.json()
+    candidates = data.get("candidates") or []
+    if not candidates:
+        return ""
+    parts = (candidates[0].get("content") or {}).get("parts") or []
+    texts = [p.get("text") for p in parts if p.get("text")]
+    return "\n".join(texts).strip()
+
+def query_gemini_vision(prompt, image_base64, mime_type="image/png", system_prompt=None):
+    if not GEMINI_API_KEY or not image_base64:
+        return ""
+    payload = {
+        "contents": [
+            {
+                "role": "user",
+                "parts": [
+                    {"text": compact_text(prompt, 5000)},
+                    {"inline_data": {"mime_type": mime_type, "data": image_base64}},
+                ],
             }
         ],
     }
@@ -2104,6 +2145,7 @@ def ai_ask():
         conversation_id = create_ai_conversation(user, question[:48])
 
     image_text = compact_text((data.get("image_text") or "").strip(), 1200)
+    image_base64 = (data.get("image_base64") or "").strip()
     composed_question = question
     if image_text:
         composed_question = f"Pergunta do usuario: {question}\n\nTexto extraido da imagem:\n{image_text}"
@@ -2153,6 +2195,19 @@ def ai_ask():
         f"Pergunta:\n{composed_question}\n\n"
         "Responda direto e apenas com a resposta final."
     )
+    if image_base64:
+        mime_type, b64 = parse_image_data_url(image_base64)
+        if b64:
+            try:
+                answer = query_gemini_vision(prompt, b64, mime_type, NEMO_SYSTEM_PROMPT)
+                if answer:
+                    clean_answer = compact_text(strip_reasoning(answer), 3500)
+                    if spreadsheet_mode:
+                        clean_answer = cleanup_spreadsheet_answer(clean_answer)
+                    save_ai_message(user, conversation_id, "assistant", clean_answer, "Gemini", "vision")
+                    return jsonify({"answer": clean_answer, "source": "Gemini", "conversation_id": conversation_id})
+            except requests.RequestException:
+                pass
     provider = choose_ai_provider(question, image_text)
     if provider == "gemini":
         try:

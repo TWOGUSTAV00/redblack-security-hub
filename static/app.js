@@ -321,6 +321,15 @@ function ocrWithTimeout(file, timeoutMs = 12000) {
   return Promise.race([ocrPromise, timeoutPromise]);
 }
 
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Falha ao ler arquivo"));
+    reader.readAsDataURL(file);
+  });
+}
+
 async function onAiAsk() {
   if (aiBusy) return;
   const input = document.getElementById("ai-question");
@@ -341,8 +350,12 @@ async function onAiAsk() {
     lastAiItems = [...lastAiItems, { role: "user", content: question }];
     setAiTyping(true);
     let imageText = "";
+    let imageBase64 = "";
     if (file) {
-      imageText = await ocrWithTimeout(file, 12000);
+      if (file.size <= 3 * 1024 * 1024) {
+        imageBase64 = await fileToDataUrl(file);
+      }
+      imageText = await ocrWithTimeout(file, 8000);
       imageInput.value = "";
     }
 
@@ -352,6 +365,7 @@ async function onAiAsk() {
         question,
         conversation_id: currentConversationId,
         image_text: imageText,
+        image_base64: imageBase64,
       }),
     });
 
