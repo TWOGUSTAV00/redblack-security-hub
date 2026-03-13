@@ -380,8 +380,12 @@ async function onAiAsk() {
     let imageText = "";
     let imageBase64 = "";
     if (file) {
-      if (file.size <= 3 * 1024 * 1024) {
+      if (file.size <= 8 * 1024 * 1024) {
         imageBase64 = await fileToDataUrl(file);
+      } else {
+        const status = document.getElementById("ai-status");
+        if (status) status.textContent = "Imagem muito grande. Use ate 8MB.";
+        throw new Error("Imagem muito grande. Use ate 8MB.");
       }
       imageText = await ocrWithTimeout(file, 8000);
       imageInput.value = "";
