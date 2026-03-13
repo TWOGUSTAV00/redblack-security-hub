@@ -673,6 +673,10 @@ main { width: min(1200px, 92vw); margin: 0 auto 60px; }
   animation: slideUp 0.25s ease-out;
 }
 
+.auth-form.hidden {
+  display: none;
+}
+
 .auth-form label {
   color: #374151;
   font-size: 0.75rem;
