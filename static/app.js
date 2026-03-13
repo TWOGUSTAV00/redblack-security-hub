@@ -13,6 +13,11 @@ let meterTimer = null;
 let meterStart = null;
 let meterStream = null;
 let isRecording = false;
+let recordingPaused = false;
+let pendingSend = false;
+let discardRecording = false;
+const PAUSE_ICON = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg>';
+const PLAY_ICON = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 5l11 7-11 7z"/></svg>';
 
 function escapeHtml(text) {
   return (text || "")
@@ -388,10 +393,22 @@ function renderMessages(items) {
     const text = m.message_text ? `<div>${escapeHtml(m.message_text)}</div>` : "";
     const image = m.message_type === "image" && m.file_url ? `<img src=\"${escapeHtml(m.file_url)}\" alt=\"imagem\" />` : "";
     const video = m.message_type === "video" && m.file_url ? `<video controls src=\"${escapeHtml(m.file_url)}\"></video>` : "";
-    const audio = m.message_type === "audio" && m.file_url ? `<audio controls src=\"${escapeHtml(m.file_url)}\"></audio>` : "";
+    const audio = m.message_type === "audio" && m.file_url ? `
+      <div class="audio-bubble" data-audio-src="${escapeHtml(m.file_url)}">
+        <button class="audio-play" type="button">▶</button>
+        <div class="audio-track">
+          <div class="audio-progress">
+            <span class="audio-progress-fill"></span>
+            <span class="audio-dot"></span>
+          </div>
+          <div class="audio-time">0:00</div>
+        </div>
+      </div>
+    ` : "";
     return `<div class=\"chat-msg ${mine ? "mine" : "peer"}\">${who}${text}${image}${video}${audio}</div>`;
   }).join("");
   box.scrollTop = box.scrollHeight;
+  initAudioPlayers();
 }
 
 async function loadMessages() {
@@ -454,8 +471,7 @@ async function onChatSend() {
   if (!selectedPeer && !selectedGroupId) return;
   const text = document.getElementById("chat-text").value.trim();
   const media = document.getElementById("chat-media")?.files?.[0];
-  const audioFile = document.getElementById("chat-audio")?.files?.[0];
-  const audio = audioFile || recordedAudioBlob;
+  const audio = recordedAudioBlob;
 
   if (!text && !media && !audio) return;
 
@@ -477,7 +493,6 @@ async function onChatSend() {
     }
     document.getElementById("chat-text").value = "";
     if (document.getElementById("chat-media")) document.getElementById("chat-media").value = "";
-    if (document.getElementById("chat-audio")) document.getElementById("chat-audio").value = "";
     recordedAudioBlob = null;
     const statusEl = document.getElementById("upload-status");
     if (statusEl) statusEl.textContent = "";
@@ -520,25 +535,23 @@ function startMeter() {
   const ctx = canvas.getContext("2d");
   const buffer = new Uint8Array(analyserNode.fftSize);
   meterStart = performance.now();
-  showAudioMeter(true);
 
   const draw = () => {
     analyserNode.getByteTimeDomainData(buffer);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = "#e1062e";
-    ctx.beginPath();
-    const slice = canvas.width / buffer.length;
-    let x = 0;
-    for (let i = 0; i < buffer.length; i += 1) {
-      const v = buffer[i] / 128.0;
-      const y = (v * canvas.height) / 2;
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-      x += slice;
+    const bars = 48;
+    const step = Math.floor(buffer.length / bars);
+    const barW = canvas.width / bars;
+    for (let i = 0; i < bars; i += 1) {
+      let sum = 0;
+      for (let j = 0; j < step; j += 1) sum += Math.abs(buffer[i * step + j] - 128);
+      const amp = Math.min(1, sum / (step * 128));
+      const h = Math.max(4, amp * canvas.height);
+      const x = i * barW + 1;
+      const y = (canvas.height - h) / 2;
+      ctx.fillStyle = "#f3a5b5";
+      ctx.fillRect(x, y, barW * 0.6, h);
     }
-    ctx.lineTo(canvas.width, canvas.height / 2);
-    ctx.stroke();
     meterRaf = requestAnimationFrame(draw);
   };
 
@@ -557,12 +570,18 @@ function stopMeter() {
   meterTimer = null;
   const timeEl = document.getElementById("audio-time");
   if (timeEl) timeEl.textContent = "00:00";
-  showAudioMeter(false);
   if (audioCtx) {
     audioCtx.close().catch(() => null);
     audioCtx = null;
   }
   analyserNode = null;
+}
+
+function toggleRecordingUI(show) {
+  const bar = document.getElementById("record-bar");
+  const row = document.querySelector(".chat-input-row");
+  if (bar) bar.classList.toggle("hidden", !show);
+  if (row) row.style.display = show ? "none" : "grid";
 }
 
 async function startRecording() {
@@ -573,6 +592,7 @@ async function startRecording() {
   }
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   meterStream = stream;
+  pendingSend = false;
 
   const chunks = [];
   mediaRecorder = new MediaRecorder(stream);
@@ -580,16 +600,19 @@ async function startRecording() {
   mediaRecorder.onstop = () => {
     const blob = new Blob(chunks, { type: "audio/webm" });
     blob.name = "audio-recorded.webm";
-    recordedAudioBlob = blob;
+    if (!discardRecording) recordedAudioBlob = blob;
     stream.getTracks().forEach((t) => t.stop());
     stopMeter();
     const status = document.getElementById("upload-status");
-    if (status) status.textContent = "Audio gravado, pronto para enviar.";
+    if (status) status.textContent = discardRecording ? "" : "Audio pronto para enviar.";
     isRecording = false;
-    const startBtn = document.getElementById("rec-start");
-    const stopBtn = document.getElementById("rec-stop");
-    if (startBtn) startBtn.disabled = false;
-    if (stopBtn) stopBtn.disabled = true;
+    recordingPaused = false;
+    toggleRecordingUI(false);
+    if (pendingSend) {
+      pendingSend = false;
+      onChatSend();
+    }
+    discardRecording = false;
   };
 
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -601,10 +624,9 @@ async function startRecording() {
 
   mediaRecorder.start();
   isRecording = true;
-  const startBtn = document.getElementById("rec-start");
-  const stopBtn = document.getElementById("rec-stop");
-  if (startBtn) startBtn.disabled = true;
-  if (stopBtn) stopBtn.disabled = false;
+  const pauseBtn = document.getElementById("rec-pause");
+  if (pauseBtn) pauseBtn.innerHTML = PAUSE_ICON;
+  toggleRecordingUI(true);
 }
 
 function stopRecording() {
@@ -616,10 +638,85 @@ function stopRecording() {
   }
   stopMeter();
   isRecording = false;
-  const startBtn = document.getElementById("rec-start");
-  const stopBtn = document.getElementById("rec-stop");
-  if (startBtn) startBtn.disabled = false;
-  if (stopBtn) stopBtn.disabled = true;
+  toggleRecordingUI(false);
+}
+
+function pauseRecording() {
+  if (!mediaRecorder || mediaRecorder.state !== "recording") return;
+  mediaRecorder.pause();
+  recordingPaused = true;
+  const btn = document.getElementById("rec-pause");
+  if (btn) btn.innerHTML = PLAY_ICON;
+}
+
+function resumeRecording() {
+  if (!mediaRecorder || mediaRecorder.state !== "paused") return;
+  mediaRecorder.resume();
+  recordingPaused = false;
+  const btn = document.getElementById("rec-pause");
+  if (btn) btn.innerHTML = PAUSE_ICON;
+}
+
+function cancelRecording() {
+  pendingSend = false;
+  discardRecording = true;
+  recordedAudioBlob = null;
+  if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
+  if (meterStream) {
+    meterStream.getTracks().forEach((t) => t.stop());
+    meterStream = null;
+  }
+  stopMeter();
+  toggleRecordingUI(false);
+  const status = document.getElementById("upload-status");
+  if (status) status.textContent = "";
+}
+
+function sendRecording() {
+  if (!isRecording) return;
+  pendingSend = true;
+  stopRecording();
+}
+
+function initAudioPlayers() {
+  document.querySelectorAll(".audio-bubble").forEach((wrap) => {
+    if (wrap.dataset.bound) return;
+    wrap.dataset.bound = "1";
+    const src = wrap.dataset.audioSrc;
+    const btn = wrap.querySelector(".audio-play");
+    const timeEl = wrap.querySelector(".audio-time");
+    const fill = wrap.querySelector(".audio-progress-fill");
+    const dot = wrap.querySelector(".audio-dot");
+    const audio = new Audio(src);
+
+    const update = () => {
+      const dur = audio.duration || 0;
+      const cur = audio.currentTime || 0;
+      if (timeEl) timeEl.textContent = dur ? `${Math.floor(cur / 60)}:${String(Math.floor(cur % 60)).padStart(2, "0")}` : "0:00";
+      const pct = dur ? (cur / dur) * 100 : 0;
+      if (fill) fill.style.width = `${pct}%`;
+      if (dot) dot.style.left = `${pct}%`;
+    };
+
+    audio.addEventListener("loadedmetadata", update);
+    audio.addEventListener("timeupdate", update);
+    audio.addEventListener("ended", () => {
+      if (btn) btn.textContent = "▶";
+      update();
+    });
+
+    if (btn) {
+      btn.addEventListener("click", () => {
+        if (audio.paused) {
+          audio.play().catch(() => null);
+          btn.textContent = "⏸";
+        } else {
+          audio.pause();
+          btn.textContent = "▶";
+        }
+      });
+    }
+  });
 }
 
 async function loadAdminUsers() {
@@ -719,10 +816,13 @@ function bindEvents() {
     const f = document.getElementById("chat-media")?.files?.[0];
     if (f) document.getElementById("upload-status").textContent = "Arquivo pronto: " + f.name;
   });
-  bind("chat-audio", "change", () => {
-    const f = document.getElementById("chat-audio")?.files?.[0];
-    if (f) document.getElementById("upload-status").textContent = "Audio pronto: " + f.name;
+  bind("rec-start", "click", startRecording);
+  bind("rec-pause", "click", () => {
+    if (recordingPaused) resumeRecording();
+    else pauseRecording();
   });
+  bind("rec-cancel", "click", cancelRecording);
+  bind("rec-send", "click", sendRecording);
   bind("chat-text", "input", async () => {
     if (selectedPeer && !selectedGroupId) {
       await setTypingState(true);
@@ -730,8 +830,7 @@ function bindEvents() {
     }
   });
 
-  bind("rec-start", "click", startRecording);
-  bind("rec-stop", "click", stopRecording);
+  
 
   bind("admin-refresh", "click", loadAdmin);
   bind("ban-btn", "click", adminBan);
@@ -745,8 +844,4 @@ function boot() {
 }
 
 document.addEventListener("DOMContentLoaded", boot);
-
-
-
-
 
