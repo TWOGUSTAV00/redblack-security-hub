@@ -19,6 +19,7 @@ let discardRecording = false;
 const chatRenderState = {};
 const PAUSE_ICON = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg>';
 const PLAY_ICON = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 5l11 7-11 7z"/></svg>';
+let lastAiItems = [];
 
 function escapeHtml(text) {
   return (text || "")
@@ -187,47 +188,98 @@ async function createNewChat() {
 
 function renderAiContent(content) {
   const raw = content || "";
-  const urlMatches = raw.match(/https?:\/\/\S+/g) || [];
-  const urls = [...new Set(urlMatches)];
-  let html = escapeHtml(raw).replaceAll("\n", "<br>");
-  urls.forEach((u) => {
-    const safe = escapeHtml(u);
-    html = html.replaceAll(safe, `<a href=\"${safe}\" target=\"_blank\" rel=\"noopener noreferrer\">${safe}</a>`);
-  });
+  const parts = raw.split("```");
+  let html = "";
+  for (let i = 0; i < parts.length; i += 1) {
+    const part = parts[i];
+    if (i % 2 === 1) {
+      const lines = part.split("\n");
+      const lang = (lines.shift() || "").trim();
+      const code = lines.join("\n");
+      const safeCode = escapeHtml(code);
+      html += `
+        <div class="ai-code">
+          <div class="ai-code-header">
+            <span>${escapeHtml(lang || "codigo")}</span>
+            <button class="copy-code" data-code="${encodeURIComponent(code)}" type="button">Copiar</button>
+          </div>
+          <pre><code>${safeCode}</code></pre>
+        </div>
+      `;
+    } else {
+      const urlMatches = part.match(/https?:\/\/\S+/g) || [];
+      const urls = [...new Set(urlMatches)];
+      let segment = escapeHtml(part).replaceAll("\n", "<br>");
+      urls.forEach((u) => {
+        const safe = escapeHtml(u);
+        segment = segment.replaceAll(safe, `<a href="${safe}" target="_blank" rel="noopener noreferrer">${safe}</a>`);
+      });
+      html += `<div class="ai-text">${segment}</div>`;
+    }
+  }
   return html;
 }
 
 function renderAiHistory(items) {
   const stream = document.getElementById("ai-chat-stream");
   if (!stream) return;
+  lastAiItems = items || [];
   if (!items.length) {
     stream.innerHTML = '<div class="message">Chat vazio. Faca sua primeira pergunta.</div>';
     return;
   }
-  stream.innerHTML = items.map((m) => {
-    const roleClass = m.role === "user" ? "user" : "assistant";
-    return `
-      <div class=\"ai-msg ${roleClass}\">
-        <div class=\"ai-role\">${m.role === "user" ? "Voce" : "Nemo IA"}</div>
-        <div class=\"ai-content\">${renderAiContent(m.content)}</div>
-      </div>
-    `;
-  }).join("");
+  stream.innerHTML = items.map((m) => renderAiMessage(m.role, m.content)).join("");
   stream.scrollTop = stream.scrollHeight;
+}
+
+function renderAiMessage(role, content, tempId = null) {
+  const roleClass = role === "user" ? "user" : "assistant";
+  const avatar = role === "user" ? "VC" : "N";
+  const name = role === "user" ? "Voce" : "Nemo IA";
+  const raw = encodeURIComponent(content || "");
+  return `
+    <div class="ai-msg ${roleClass}" ${tempId ? `data-temp-id="${tempId}"` : ""} data-raw="${raw}">
+      <div class="ai-avatar">${avatar}</div>
+      <div class="ai-bubble">
+        <div class="ai-header">
+          <div class="ai-role">${name}</div>
+          ${role === "assistant" ? '<button class="copy-msg" type="button">Copiar</button>' : ""}
+        </div>
+        <div class="ai-content">${renderAiContent(content)}</div>
+      </div>
+    </div>
+  `;
 }
 
 function appendAiMessage(role, content, tempId = null) {
   const stream = document.getElementById("ai-chat-stream");
   if (!stream) return;
-  const wrapper = document.createElement("div");
-  wrapper.className = `ai-msg ${role}`;
-  if (tempId) wrapper.dataset.tempId = tempId;
-  wrapper.innerHTML = `
-    <div class="ai-role">${role === "user" ? "Voce" : "Nemo IA"}</div>
-    <div class="ai-content">${renderAiContent(content)}</div>
-  `;
-  stream.appendChild(wrapper);
+  stream.insertAdjacentHTML("beforeend", renderAiMessage(role, content, tempId));
   stream.scrollTop = stream.scrollHeight;
+}
+
+function typewriter(el, text, speed = 12) {
+  if (!el) return;
+  const raw = text || "";
+  let i = 0;
+  const tick = () => {
+    i += 1;
+    const slice = raw.slice(0, i);
+    el.innerHTML = renderAiContent(slice);
+    el.closest(".ai-msg")?.scrollIntoView({ block: "end" });
+    if (i < raw.length) setTimeout(tick, speed);
+  };
+  tick();
+}
+
+function filterAiHistory(term) {
+  const q = (term || "").trim().toLowerCase();
+  if (!q) {
+    renderAiHistory(lastAiItems);
+    return;
+  }
+  const filtered = (lastAiItems || []).filter((m) => (m.content || "").toLowerCase().includes(q));
+  renderAiHistory(filtered);
 }
 
 function setAiTyping(show) {
@@ -286,6 +338,7 @@ async function onAiAsk() {
     const displayText = questionRaw || (file ? "Imagem enviada" : "Pergunta enviada");
     input.value = "";
     appendAiMessage("user", displayText);
+    lastAiItems = [...lastAiItems, { role: "user", content: question }];
     setAiTyping(true);
     let imageText = "";
     if (file) {
@@ -293,7 +346,7 @@ async function onAiAsk() {
       imageInput.value = "";
     }
 
-    await api("/api/ai/ask", {
+    const resp = await api("/api/ai/ask", {
       method: "POST",
       body: JSON.stringify({
         question,
@@ -302,8 +355,14 @@ async function onAiAsk() {
       }),
     });
 
+    const answer = resp?.answer || "";
+    appendAiMessage("assistant", "");
+    const lastContainer = document.querySelector("#ai-chat-stream .ai-msg.assistant:last-child");
+    const lastMsg = lastContainer ? lastContainer.querySelector(".ai-content") : null;
+    if (lastContainer) lastContainer.dataset.raw = encodeURIComponent(answer);
+    if (lastMsg) typewriter(lastMsg, answer, 10);
+    lastAiItems = [...lastAiItems, { role: "assistant", content: answer }];
     await loadConversations();
-    await loadAiHistory();
   } catch (err) {
     const stream = document.getElementById("ai-chat-stream");
     if (stream) {
@@ -838,12 +897,37 @@ function bindEvents() {
     await loadAiHistory();
   });
   bind("ai-clear-btn", "click", clearAiHistory);
+  bind("ai-search", "input", (e) => {
+    filterAiHistory(e.target.value);
+  });
   bind("ai-question", "keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       onAiAsk();
     }
   });
+
+  const aiStream = document.getElementById("ai-chat-stream");
+  if (aiStream) {
+    aiStream.addEventListener("click", async (e) => {
+      const msgBtn = e.target.closest(".copy-msg");
+      if (msgBtn) {
+        const msg = msgBtn.closest(".ai-msg");
+        const raw = decodeURIComponent(msg?.dataset?.raw || "");
+        if (raw) await navigator.clipboard.writeText(raw);
+        msgBtn.textContent = "Copiado";
+        setTimeout(() => { msgBtn.textContent = "Copiar"; }, 1200);
+        return;
+      }
+      const codeBtn = e.target.closest(".copy-code");
+      if (codeBtn) {
+        const raw = decodeURIComponent(codeBtn.dataset.code || "");
+        if (raw) await navigator.clipboard.writeText(raw);
+        codeBtn.textContent = "Copiado";
+        setTimeout(() => { codeBtn.textContent = "Copiar"; }, 1200);
+      }
+    });
+  }
 
   bind("chat-refresh-users", "click", async () => {
     await loadUsers();
