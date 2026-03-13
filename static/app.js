@@ -394,9 +394,11 @@ async function onAiAsk() {
 
 function renderUsers(items) {
   const list = document.getElementById("chat-users");
+  const groupList = document.getElementById("group-members");
   if (!list) return;
   if (!items.length) {
     list.innerHTML = "<div class=\"message\">Sem usuarios.</div>";
+    if (groupList) groupList.innerHTML = "<div class=\"message\">Sem usuarios.</div>";
     return;
   }
   list.innerHTML = items.map((u) => {
@@ -415,6 +417,20 @@ function renderUsers(items) {
       </button>
     `;
   }).join("");
+
+  if (groupList) {
+    groupList.innerHTML = items.map((u) => {
+      const uname = escapeHtml(u.username);
+      const initials = escapeHtml((u.username || "?").slice(0, 2).toUpperCase());
+      return `
+        <label class="group-member">
+          <input type="checkbox" value="${uname}" />
+          <span class="group-avatar">${initials}</span>
+          <span class="group-name">${uname}</span>
+        </label>
+      `;
+    }).join("");
+  }
 
   list.querySelectorAll("[data-peer]").forEach((btn) => {
     btn.addEventListener("click", async () => {
@@ -645,14 +661,15 @@ async function onChatSend() {
 
 async function onCreateGroup() {
   const name = document.getElementById("group-name").value.trim();
-  const membersRaw = document.getElementById("group-members").value.trim();
-  const members = membersRaw ? membersRaw.split(",").map((x) => x.trim()).filter(Boolean) : [];
+  const members = Array.from(document.querySelectorAll("#group-members input[type='checkbox']:checked"))
+    .map((el) => el.value.trim())
+    .filter(Boolean);
   await api("/api/chat/groups", {
     method: "POST",
     body: JSON.stringify({ name, members }),
   });
   document.getElementById("group-name").value = "";
-  document.getElementById("group-members").value = "";
+  document.querySelectorAll("#group-members input[type='checkbox']").forEach((el) => { el.checked = false; });
   await loadGroups();
 }
 

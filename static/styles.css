@@ -417,6 +417,58 @@ main { width: min(1200px, 92vw); margin: 0 auto 60px; }
 .chat-row-title { font-weight: 600; }
 .chat-row-sub { font-size: 0.75rem; color: var(--muted); }
 
+.group-members {
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 12px;
+  padding: 10px;
+  background: rgba(15, 23, 42, 0.65);
+  display: grid;
+  gap: 8px;
+}
+
+.group-members-title {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.group-members-list {
+  display: grid;
+  gap: 6px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.group-member {
+  display: grid;
+  grid-template-columns: auto 28px 1fr;
+  gap: 8px;
+  align-items: center;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.03);
+}
+
+.group-member input {
+  accent-color: var(--accent);
+}
+
+.group-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: #0f172a;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  display: grid;
+  place-items: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.group-name {
+  font-size: 0.85rem;
+}
+
 .chat-main {
   border: 1px solid var(--border);
   border-radius: 12px;

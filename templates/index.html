@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/styles.css?v=20260313h" />
+  <link rel="stylesheet" href="/static/styles.css?v=20260313i" />
 </head>
 <body>
   <div class="bg-orb orb-1"></div>
@@ -118,7 +118,10 @@
             <div class="chat-block">
               <h3>Grupos</h3>
               <input id="group-name" placeholder="Nome do grupo" />
-              <input id="group-members" placeholder="Membros (user1,user2)" />
+              <div class="group-members">
+                <div class="group-members-title">Selecione usuarios</div>
+                <div id="group-members" class="group-members-list"></div>
+              </div>
               <button id="group-create-btn" class="btn-primary" type="button">Criar grupo</button>
               <button id="group-refresh-btn" class="btn-ghost" type="button">Atualizar grupos</button>
               <div id="chat-groups" class="chat-list"></div>
@@ -247,7 +250,7 @@
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="/static/app.js?v=20260313h"></script>
+  <script src="/static/app.js?v=20260313i"></script>
 </body>
 </html>
 
