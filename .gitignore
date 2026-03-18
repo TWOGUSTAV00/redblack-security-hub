@@ -1,7 +1,12 @@
-﻿app.db
+app.db
 __pycache__/
 *.pyc
 .venv/
 venv/
 *.log
 cloudflared.exe
+backend/node_modules/
+frontend/node_modules/
+frontend/dist/
+backend/.env
+frontend/.env
