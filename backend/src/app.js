@@ -11,9 +11,11 @@ import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 import healthRoutes from './routes/health.routes.js';
 import chatRoutes from './routes/chat.routes.js';
 import conversationRoutes from './routes/conversation.routes.js';
+import { validateRuntimeConfig } from './config/runtime-check.js';
 
 export async function startServer() {
   await Promise.all([connectMongo(), connectRedis()]);
+  validateRuntimeConfig();
 
   const app = express();
   app.use(helmet());

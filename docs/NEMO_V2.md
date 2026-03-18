@@ -112,11 +112,18 @@ docker-compose.yml
 - `PORT`
 - `FRONTEND_URL`
 - `MONGODB_URI`
+- `MONGO_URI` (alias)
+- `MONGODB_URL` (alias)
 - `REDIS_URL`
+- `REDISCLOUD_URL` (alias)
 - `BRAVE_SEARCH_API_KEY`
+- `BRAVE_API_KEY` (alias)
 - `GEMINI_API_KEY`
+- `GOOGLE_AI_STUDIO_API_KEY` (alias)
+- `GOOGLE_API_KEY` (alias)
 - `GEMINI_MODEL`
 - `DEEPSEEK_API_KEY`
+- `DEEPSEEK_KEY` (alias)
 - `DEEPSEEK_MODEL`
 - `CACHE_TTL_SECONDS`
 - `MAX_CONTEXT_CHARS`
@@ -133,6 +140,26 @@ docker compose up --build
 
 Frontend: [http://localhost:5173](http://localhost:5173)
 Backend: [http://localhost:8080/api/health](http://localhost:8080/api/health)
+
+## Como conectar suas chaves reais
+
+No backend, basta definir estas variaveis no Render, Docker ou `.env`:
+
+- `GEMINI_API_KEY`
+- `DEEPSEEK_API_KEY`
+- `BRAVE_SEARCH_API_KEY`
+- `MONGODB_URI`
+- `REDIS_URL`
+
+Se o seu provedor usar outros nomes, o backend tambem aceita aliases comuns:
+
+- Gemini: `GOOGLE_AI_STUDIO_API_KEY`, `GOOGLE_API_KEY`
+- DeepSeek: `DEEPSEEK_KEY`
+- Brave: `BRAVE_API_KEY`
+- MongoDB: `MONGO_URI`, `MONGODB_URL`
+- Redis: `REDISCLOUD_URL`
+
+Foi adicionado um blueprint separado em [render-node.yaml](C:\Users\Fiscal\Documents\New project\render-node.yaml) para subir essa nova stack sem substituir o servico Flask atual.
 
 ## Como rodar sem Docker
 

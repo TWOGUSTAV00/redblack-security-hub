@@ -1,0 +1,40 @@
+services:
+  - type: web
+    name: nemo-ia-backend
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 24.14.0
+      - key: FRONTEND_URL
+        value: https://your-frontend-domain.com
+      - key: MONGODB_URI
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-1.5-flash
+      - key: DEEPSEEK_API_KEY
+        sync: false
+      - key: DEEPSEEK_MODEL
+        value: deepseek-chat
+      - key: BRAVE_SEARCH_API_KEY
+        sync: false
+      - key: CACHE_TTL_SECONDS
+        value: 300
+      - key: MAX_CONTEXT_CHARS
+        value: 12000
+
+  - type: static
+    name: nemo-ia-frontend
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_BASE_URL
+        value: https://your-backend-domain.com/api
