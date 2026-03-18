@@ -32,8 +32,9 @@ services:
       - key: MAX_CONTEXT_CHARS
         value: 12000
 
-  - type: static
+  - type: web
     name: nemo-ia-frontend
+    runtime: static
     rootDir: frontend
     buildCommand: npm install && npm run build
     staticPublishPath: dist
