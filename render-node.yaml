@@ -10,10 +10,12 @@ services:
       - key: NODE_VERSION
         value: 24.14.0
       - key: FRONTEND_URL
-        value: https://your-frontend-domain.com
+        value: https://nemo-ia-frontend.onrender.com
       - key: MONGODB_URI
         sync: false
       - key: REDIS_URL
+        sync: false
+      - key: JWT_SECRET
         sync: false
       - key: GEMINI_API_KEY
         sync: false
@@ -37,4 +39,8 @@ services:
     staticPublishPath: dist
     envVars:
       - key: VITE_API_BASE_URL
-        value: https://your-backend-domain.com/api
+        value: https://nemo-ia-backend.onrender.com/api
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
