@@ -1,13 +1,15 @@
 import { useEffect } from 'react';
+import AuthCard from '../components/AuthCard.jsx';
 import TopBar from '../components/TopBar.jsx';
 import ConversationList from '../components/ConversationList.jsx';
 import ChatWindow from '../components/ChatWindow.jsx';
 import MessageComposer from '../components/MessageComposer.jsx';
 import { useChat } from '../hooks/useChat.js';
+import { useAuth } from '../hooks/useAuth.js';
 
 export default function ChatPage() {
+  const auth = useAuth();
   const {
-    demoUser,
     conversations,
     activeConversation,
     messages,
@@ -23,15 +25,32 @@ export default function ChatPage() {
     openConversation,
     onSend,
     onPickImage
-  } = useChat();
+  } = useChat({ user: auth.user, token: auth.token });
 
   useEffect(() => {
-    refreshConversations();
-  }, []);
+    if (auth.user && auth.token) {
+      refreshConversations();
+    }
+  }, [auth.user, auth.token]);
+
+  if (auth.loading) {
+    return <main className="auth-shell"><section className="auth-card"><h1>Carregando sessao...</h1></section></main>;
+  }
+
+  if (!auth.user || !auth.token) {
+    return (
+      <AuthCard
+        loading={auth.loading}
+        error={auth.error}
+        onLogin={(payload) => auth.login(payload).catch((error) => auth.setError(error.message))}
+        onRegister={(payload) => auth.register(payload).catch((error) => auth.setError(error.message))}
+      />
+    );
+  }
 
   return (
     <main className="app-shell">
-      <TopBar provider={provider} userName={demoUser.name} />
+      <TopBar provider={provider} userName={auth.user.name} onLogout={auth.logout} />
 
       <div className="workspace">
         <ConversationList

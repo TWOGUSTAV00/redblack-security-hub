@@ -1,4 +1,4 @@
-export default function TopBar({ provider, userName }) {
+export default function TopBar({ provider, userName, onLogout }) {
   return (
     <header className="topbar">
       <div>
@@ -8,6 +8,7 @@ export default function TopBar({ provider, userName }) {
       <div className="topbar-badges">
         <span className="badge">Usuario: {userName}</span>
         <span className="badge badge-active">Provider ativo: {provider}</span>
+        <button className="ghost-button" onClick={onLogout}>Sair</button>
       </div>
     </header>
   );

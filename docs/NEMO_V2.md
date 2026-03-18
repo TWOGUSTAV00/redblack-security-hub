@@ -128,6 +128,7 @@ docker-compose.yml
 - `CACHE_TTL_SECONDS`
 - `MAX_CONTEXT_CHARS`
 - `ENABLE_WEB_FETCH`
+- `JWT_SECRET`
 
 ### Frontend
 - `VITE_API_BASE_URL`
@@ -181,17 +182,34 @@ npm run dev
 
 ## Exemplo de requisicao real
 
+### Registro de usuario
+```bash
+curl -X POST http://localhost:8080/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "gustavo",
+    "displayName": "Gustavo",
+    "password": "gustavo270998"
+  }'
+```
+
+### Login
+```bash
+curl -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "gustavo",
+    "password": "gustavo270998"
+  }'
+```
+
 ### HTTP JSON
 ```bash
 curl -X POST http://localhost:8080/api/chat/message \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer SEU_TOKEN_JWT" \
   -d '{
-    "userId": "gustavo-1",
-    "message": "Pesquise as ultimas noticias sobre Gemini e resuma em 5 pontos",
-    "userProfile": {
-      "name": "Gustavo",
-      "plan": "pro"
-    }
+    "message": "Pesquise as ultimas noticias sobre Gemini e resuma em 5 pontos"
   }'
 ```
 

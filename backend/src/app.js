@@ -12,6 +12,7 @@ import healthRoutes from './routes/health.routes.js';
 import chatRoutes from './routes/chat.routes.js';
 import conversationRoutes from './routes/conversation.routes.js';
 import { validateRuntimeConfig } from './config/runtime-check.js';
+import authRoutes from './routes/auth.routes.js';
 
 export async function startServer() {
   await Promise.all([connectMongo(), connectRedis()]);
@@ -26,6 +27,7 @@ export async function startServer() {
   app.use(requestLogger);
 
   app.use('/api/health', healthRoutes);
+  app.use('/api/auth', authRoutes);
   app.use('/api/chat', chatRoutes);
   app.use('/api/conversations', conversationRoutes);
 

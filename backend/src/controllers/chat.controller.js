@@ -7,7 +7,16 @@ function writeSse(res, event, data) {
 
 export async function sendMessage(req, res, next) {
   try {
-    const payload = await executeChatFlow(req.body);
+    const payload = await executeChatFlow({
+      ...req.body,
+      userId: req.user.id,
+      userProfile: {
+        name: req.user.name,
+        plan: req.user.plan,
+        username: req.user.username,
+        avatarUrl: req.user.avatarUrl || ''
+      }
+    });
     res.json(payload);
   } catch (error) {
     next(error);
@@ -20,7 +29,16 @@ export async function streamMessage(req, res, next) {
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
 
-    const payload = await executeChatFlow(req.body);
+    const payload = await executeChatFlow({
+      ...req.body,
+      userId: req.user.id,
+      userProfile: {
+        name: req.user.name,
+        plan: req.user.plan,
+        username: req.user.username,
+        avatarUrl: req.user.avatarUrl || ''
+      }
+    });
     const words = payload.answer.split(/(\s+)/).filter(Boolean);
 
     writeSse(res, 'meta', {

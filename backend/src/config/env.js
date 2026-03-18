@@ -17,6 +17,7 @@ export const env = {
   FRONTEND_URL: process.env.FRONTEND_URL || 'http://localhost:5173',
   MONGODB_URI: pickEnv('MONGODB_URI', 'MONGO_URI', 'MONGODB_URL') || 'mongodb://localhost:27017/nemoia',
   REDIS_URL: pickEnv('REDIS_URL', 'REDISCLOUD_URL') || 'redis://localhost:6379',
+  JWT_SECRET: pickEnv('JWT_SECRET') || 'change-me',
   DEFAULT_TIMEOUT_MS: Number(process.env.DEFAULT_TIMEOUT_MS || 25000),
   CACHE_TTL_SECONDS: Number(process.env.CACHE_TTL_SECONDS || 300),
   MAX_CONTEXT_CHARS: Number(process.env.MAX_CONTEXT_CHARS || 12000),

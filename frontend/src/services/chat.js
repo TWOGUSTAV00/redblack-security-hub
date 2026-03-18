@@ -1,18 +1,22 @@
 import { apiFetch, API_BASE_URL } from './api.js';
 
-export async function sendMessage(payload) {
+export async function sendMessage(payload, token) {
   return apiFetch('/chat/message', {
     method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
     body: JSON.stringify(payload)
   });
 }
 
-export function streamMessage(payload, handlers) {
+export function streamMessage(payload, token, handlers) {
   const controller = new AbortController();
 
   fetch(`${API_BASE_URL}/chat/stream`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    },
     body: JSON.stringify(payload),
     signal: controller.signal
   }).then(async (response) => {

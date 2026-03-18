@@ -2,13 +2,7 @@ import { useMemo, useState } from 'react';
 import { getConversation, listConversations } from '../services/conversation.js';
 import { streamMessage } from '../services/chat.js';
 
-const demoUser = {
-  id: 'nemo-demo-user',
-  name: 'Gustavo',
-  plan: 'pro'
-};
-
-export function useChat() {
+export function useChat({ user, token }) {
   const [conversations, setConversations] = useState([]);
   const [activeConversationId, setActiveConversationId] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -20,18 +14,20 @@ export function useChat() {
   const [error, setError] = useState('');
 
   async function refreshConversations() {
-    const data = await listConversations(demoUser.id);
+    if (!token) return;
+    const data = await listConversations(token);
     setConversations(data.conversations || []);
   }
 
   async function openConversation(conversationId) {
+    if (!token) return;
     setActiveConversationId(conversationId);
-    const data = await getConversation(demoUser.id, conversationId);
+    const data = await getConversation(conversationId, token);
     setMessages(data.conversation?.messages || []);
   }
 
   async function onSend() {
-    if (!input.trim() && !selectedImage) return;
+    if ((!input.trim() && !selectedImage) || !token || !user) return;
 
     setError('');
     setIsLoading(true);
@@ -46,10 +42,8 @@ export function useChat() {
     setMessages((current) => [...current, optimisticMessage, { role: 'assistant', content: '', provider: 'nemo', streaming: true }]);
 
     const payload = {
-      userId: demoUser.id,
       conversationId: activeConversationId,
       message: input,
-      userProfile: demoUser,
       image: selectedImage ? {
         base64: selectedImage.base64,
         mimeType: selectedImage.file.type,
@@ -60,7 +54,7 @@ export function useChat() {
     setInput('');
     setSelectedImage(null);
 
-    streamMessage(payload, {
+    streamMessage(payload, token, {
       meta(meta) {
         setProvider(meta.provider || 'nemo');
         if (meta.conversationId) {
@@ -123,7 +117,6 @@ export function useChat() {
   );
 
   return {
-    demoUser,
     conversations,
     activeConversation,
     messages,
