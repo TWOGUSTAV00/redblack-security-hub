@@ -3,6 +3,24 @@ import { ChatMessage } from './chat-message.model.js';
 import { User } from '../auth/user.model.js';
 import { AppError } from '../utils/errors.js';
 import { uniqueIds, sortPair } from './chat.utils.js';
+import mongoose from 'mongoose';
+
+function normalizeMongoId(value) {
+  if (!value) return '';
+  if (typeof value === 'object') {
+    return String(value._id || value.id || '');
+  }
+  return String(value);
+}
+
+function ensureValidObjectId(value, label = 'ID') {
+  const normalized = normalizeMongoId(value);
+  console.log(`${label} recebido:`, normalized);
+  if (!normalized || !mongoose.isValidObjectId(normalized)) {
+    throw new AppError(`${label} invalido`, 400);
+  }
+  return normalized;
+}
 
 function previewText(text = '', attachments = []) {
   if (text?.trim()) return text.trim().slice(0, 140);
@@ -15,9 +33,14 @@ function unreadFor(conversation, userId) {
 }
 
 async function hydrateParticipantMap(ids) {
-  const users = await User.find({ _id: { $in: ids } }).lean();
+  const normalizedIds = uniqueIds(ids.map((id) => normalizeMongoId(id)).filter((id) => mongoose.isValidObjectId(id)));
+  if (!normalizedIds.length) {
+    return new Map();
+  }
+  const users = await User.find({ _id: { $in: normalizedIds } }).lean();
   return new Map(users.map((user) => [String(user._id), {
     id: String(user._id),
+    _id: String(user._id),
     username: user.username,
     name: user.displayName,
     avatarUrl: user.avatarUrl || ''
@@ -25,14 +48,16 @@ async function hydrateParticipantMap(ids) {
 }
 
 export async function listChatContacts(currentUserId, search = '') {
+  const safeCurrentUserId = ensureValidObjectId(currentUserId, 'ID do usuario atual');
   const regex = search ? new RegExp(search, 'i') : null;
-  const query = { _id: { $ne: currentUserId } };
+  const query = { _id: { $ne: safeCurrentUserId } };
   if (regex) {
     query.$or = [{ username: regex }, { displayName: regex }];
   }
   const users = await User.find(query).sort({ displayName: 1 }).limit(40).lean();
   return users.map((user) => ({
     id: String(user._id),
+    _id: String(user._id),
     username: user.username,
     name: user.displayName,
     avatarUrl: user.avatarUrl || ''
@@ -40,7 +65,9 @@ export async function listChatContacts(currentUserId, search = '') {
 }
 
 export async function getOrCreateDirectConversation(currentUserId, otherUserId) {
-  const [first, second] = sortPair(currentUserId, otherUserId);
+  const safeCurrentUserId = ensureValidObjectId(currentUserId, 'ID do usuario atual');
+  const safeOtherUserId = ensureValidObjectId(otherUserId, 'ID do contato');
+  const [first, second] = sortPair(safeCurrentUserId, safeOtherUserId);
   let conversation = await ChatConversation.findOne({
     type: 'direct',
     participantIds: { $all: [first, second], $size: 2 }
@@ -61,7 +88,8 @@ export async function getOrCreateDirectConversation(currentUserId, otherUserId) 
 }
 
 export async function listChatConversations(currentUserId) {
-  const conversations = await ChatConversation.find({ participantIds: String(currentUserId) })
+  const safeCurrentUserId = ensureValidObjectId(currentUserId, 'ID do usuario atual');
+  const conversations = await ChatConversation.find({ participantIds: safeCurrentUserId })
     .sort({ lastMessageAt: -1 })
     .lean();
 
@@ -71,6 +99,7 @@ export async function listChatConversations(currentUserId) {
   return conversations.map((conversation) => {
     const otherParticipants = conversation.participantIds
       .filter((participantId) => participantId !== String(currentUserId))
+      .filter((participantId) => participantId !== safeCurrentUserId)
       .map((participantId) => participantMap.get(String(participantId)))
       .filter(Boolean);
 
@@ -90,7 +119,9 @@ export async function listChatConversations(currentUserId) {
 }
 
 export async function getConversationDetail(currentUserId, conversationId) {
-  const conversation = await ChatConversation.findOne({ _id: conversationId, participantIds: String(currentUserId) }).lean();
+  const safeCurrentUserId = ensureValidObjectId(currentUserId, 'ID do usuario atual');
+  const safeConversationId = ensureValidObjectId(conversationId, 'ID da conversa');
+  const conversation = await ChatConversation.findOne({ _id: safeConversationId, participantIds: safeCurrentUserId }).lean();
   if (!conversation) {
     throw new AppError('Conversa nao encontrada', 404);
   }
@@ -99,7 +130,7 @@ export async function getConversationDetail(currentUserId, conversationId) {
   return {
     id: String(conversation._id),
     type: conversation.type,
-    title: conversation.title || conversation.participantIds.filter((id) => id !== String(currentUserId)).map((id) => participantMap.get(id)?.name).filter(Boolean).join(', ') || 'Conversa',
+    title: conversation.title || conversation.participantIds.filter((id) => id !== safeCurrentUserId).map((id) => participantMap.get(id)?.name).filter(Boolean).join(', ') || 'Conversa',
     avatarUrl: conversation.avatarUrl || '',
     participants: conversation.participantIds.map((id) => participantMap.get(id)).filter(Boolean),
     lastMessageAt: conversation.lastMessageAt,
@@ -108,12 +139,14 @@ export async function getConversationDetail(currentUserId, conversationId) {
 }
 
 export async function listMessages(currentUserId, conversationId, { limit = 30, before } = {}) {
-  const conversation = await ChatConversation.findOne({ _id: conversationId, participantIds: String(currentUserId) }).lean();
+  const safeCurrentUserId = ensureValidObjectId(currentUserId, 'ID do usuario atual');
+  const safeConversationId = ensureValidObjectId(conversationId, 'ID da conversa');
+  const conversation = await ChatConversation.findOne({ _id: safeConversationId, participantIds: safeCurrentUserId }).lean();
   if (!conversation) {
     throw new AppError('Conversa nao encontrada', 404);
   }
 
-  const query = { conversationId: String(conversationId) };
+  const query = { conversationId: safeConversationId };
   if (before) {
     query.createdAt = { $lt: new Date(before) };
   }
@@ -145,20 +178,23 @@ export async function listMessages(currentUserId, conversationId, { limit = 30, 
 }
 
 export async function markConversationRead(currentUserId, conversationId) {
-  const conversation = await ChatConversation.findOne({ _id: conversationId, participantIds: String(currentUserId) });
+  const safeCurrentUserId = ensureValidObjectId(currentUserId, 'ID do usuario atual');
+  const safeConversationId = ensureValidObjectId(conversationId, 'ID da conversa');
+  const conversation = await ChatConversation.findOne({ _id: safeConversationId, participantIds: safeCurrentUserId });
   if (!conversation) {
     throw new AppError('Conversa nao encontrada', 404);
   }
-  conversation.unreadCounts.set(String(currentUserId), 0);
+  conversation.unreadCounts.set(safeCurrentUserId, 0);
   await conversation.save();
   await ChatMessage.updateMany(
-    { conversationId: String(conversationId), readBy: { $ne: String(currentUserId) } },
-    { $addToSet: { readBy: String(currentUserId) } }
+    { conversationId: safeConversationId, readBy: { $ne: safeCurrentUserId } },
+    { $addToSet: { readBy: safeCurrentUserId } }
   );
   return true;
 }
 
 export async function sendChatMessage({ senderId, conversationId, recipientId, text = '', attachments = [] }) {
+  const safeSenderId = ensureValidObjectId(senderId, 'ID do remetente');
   const normalizedAttachments = (attachments || []).map((attachment) => ({
     kind: attachment.kind === 'file' ? 'file' : 'image',
     name: attachment.name || '',
@@ -169,9 +205,10 @@ export async function sendChatMessage({ senderId, conversationId, recipientId, t
 
   let conversation = null;
   if (conversationId) {
-    conversation = await ChatConversation.findOne({ _id: conversationId, participantIds: String(senderId) });
+    const safeConversationId = ensureValidObjectId(conversationId, 'ID da conversa');
+    conversation = await ChatConversation.findOne({ _id: safeConversationId, participantIds: safeSenderId });
   } else if (recipientId) {
-    conversation = await getOrCreateDirectConversation(senderId, recipientId);
+    conversation = await getOrCreateDirectConversation(safeSenderId, recipientId);
   }
 
   if (!conversation) {
@@ -180,18 +217,18 @@ export async function sendChatMessage({ senderId, conversationId, recipientId, t
 
   const message = await ChatMessage.create({
     conversationId: String(conversation._id),
-    senderId: String(senderId),
+    senderId: safeSenderId,
     text: text || '',
     attachments: normalizedAttachments,
-    readBy: [String(senderId)]
+    readBy: [safeSenderId]
   });
 
   conversation.lastMessageText = previewText(text, normalizedAttachments);
   conversation.lastMessageAt = message.createdAt;
-  conversation.lastMessageSenderId = String(senderId);
+  conversation.lastMessageSenderId = safeSenderId;
   conversation.lastAttachments = normalizedAttachments;
   for (const participantId of conversation.participantIds) {
-    if (String(participantId) === String(senderId)) {
+    if (String(participantId) === safeSenderId) {
       conversation.unreadCounts.set(String(participantId), 0);
     } else {
       conversation.unreadCounts.set(String(participantId), unreadFor(conversation, participantId) + 1);
@@ -200,13 +237,13 @@ export async function sendChatMessage({ senderId, conversationId, recipientId, t
   await conversation.save();
 
   const participantMap = await hydrateParticipantMap(conversation.participantIds);
-  const sender = participantMap.get(String(senderId)) || null;
+  const sender = participantMap.get(safeSenderId) || null;
 
   return {
     conversation: {
       id: String(conversation._id),
       type: conversation.type,
-      title: conversation.title || conversation.participantIds.filter((id) => id !== String(senderId)).map((id) => participantMap.get(String(id))?.name).filter(Boolean).join(', ') || 'Conversa',
+      title: conversation.title || conversation.participantIds.filter((id) => id !== safeSenderId).map((id) => participantMap.get(String(id))?.name).filter(Boolean).join(', ') || 'Conversa',
       avatarUrl: conversation.avatarUrl || '',
       participantIds: conversation.participantIds,
       lastMessageText: conversation.lastMessageText,
@@ -215,7 +252,7 @@ export async function sendChatMessage({ senderId, conversationId, recipientId, t
     message: {
       id: String(message._id),
       conversationId: String(conversation._id),
-      senderId: String(senderId),
+      senderId: safeSenderId,
       sender,
       text: message.text,
       attachments: normalizedAttachments,

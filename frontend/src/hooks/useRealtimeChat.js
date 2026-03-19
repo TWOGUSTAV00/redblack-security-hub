@@ -4,6 +4,11 @@ import { createChatSocket } from '../services/socket.js';
 
 const PAGE_SIZE = 30;
 
+function getEntityId(entity) {
+  if (!entity) return '';
+  return String(entity._id || entity.id || '');
+}
+
 function attachmentsSignature(attachments = []) {
   return attachments.map((attachment) => `${attachment.kind}:${attachment.name}:${attachment.url}`).join('|');
 }
@@ -53,24 +58,33 @@ export function useRealtimeChat({ token, user }) {
   }
 
   async function openConversation(conversation, { preserveSidebar = false } = {}) {
-    if (!token || !conversation?.id) return;
+    const conversationId = getEntityId(conversation);
+    if (!token || !conversationId) {
+      setError('Conversa invalida. ID nao encontrado.');
+      return;
+    }
     setActiveConversation(conversation);
     setSelectedContact(conversation.counterpart || null);
     setLoadingMessages(true);
-    const data = await getConversationMessages(token, conversation.id, { limit: PAGE_SIZE });
+    const data = await getConversationMessages(token, conversationId, { limit: PAGE_SIZE });
     setMessages(data.messages || []);
     setHasMoreMessages(Boolean(data.hasMore));
     setLoadingMessages(false);
-    await markConversationRead(token, conversation.id).catch(() => null);
-    socketRef.current?.emit('chat:conversation:join', { conversationId: conversation.id });
+    await markConversationRead(token, conversationId).catch(() => null);
+    socketRef.current?.emit('chat:conversation:join', { conversationId });
     if (!preserveSidebar) {
       setMobileSidebarOpen(false);
     }
   }
 
   async function startConversation(contact) {
-    if (!token) return;
-    const data = await createDirectConversation(token, contact.id);
+    const participantId = getEntityId(contact);
+    console.log('ID enviado para criar conversa:', participantId, contact);
+    if (!token || !participantId) {
+      setError('Contato invalido. ID nao encontrado.');
+      return;
+    }
+    const data = await createDirectConversation(token, participantId);
     const conversation = {
       ...data.conversation,
       counterpart: contact,
@@ -83,10 +97,11 @@ export function useRealtimeChat({ token, user }) {
   }
 
   async function loadOlderMessages() {
-    if (!token || !activeConversation?.id || !messages.length || loadingMessages) return;
+    const conversationId = getEntityId(activeConversation);
+    if (!token || !conversationId || !messages.length || loadingMessages) return;
     setLoadingMessages(true);
     const oldest = messages[0];
-    const data = await getConversationMessages(token, activeConversation.id, {
+    const data = await getConversationMessages(token, conversationId, {
       limit: PAGE_SIZE,
       before: oldest.createdAt
     });
@@ -153,11 +168,12 @@ export function useRealtimeChat({ token, user }) {
 
   function handleDraftChange(value) {
     setDraft(value);
-    if (!activeConversation?.id || !socketRef.current) return;
-    socketRef.current.emit('chat:typing', { conversationId: activeConversation.id, isTyping: true });
+    const conversationId = getEntityId(activeConversation);
+    if (!conversationId || !socketRef.current) return;
+    socketRef.current.emit('chat:typing', { conversationId, isTyping: true });
     clearTimeout(typingTimeoutRef.current);
     typingTimeoutRef.current = setTimeout(() => {
-      socketRef.current?.emit('chat:typing', { conversationId: activeConversation.id, isTyping: false });
+      socketRef.current?.emit('chat:typing', { conversationId, isTyping: false });
     }, 900);
   }
 
@@ -188,13 +204,13 @@ export function useRealtimeChat({ token, user }) {
     if (!socketRef.current) return;
     if (!draft.trim() && !attachments.length) return;
 
-    let recipientId = selectedContact?.id || activeConversation?.counterpart?.id || null;
-    let conversationId = activeConversation?.id || null;
+    let recipientId = getEntityId(selectedContact) || getEntityId(activeConversation?.counterpart) || null;
+    let conversationId = getEntityId(activeConversation) || null;
 
     if (!conversationId && !recipientId && contacts.length > 0 && search) {
       const exact = contacts.find((contact) => contact.name.toLowerCase() === search.toLowerCase() || contact.username.toLowerCase() === search.toLowerCase());
       if (exact) {
-        recipientId = exact.id;
+        recipientId = getEntityId(exact);
       }
     }
 
