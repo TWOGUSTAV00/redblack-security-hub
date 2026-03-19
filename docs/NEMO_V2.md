@@ -2,13 +2,14 @@
 
 ## Visao geral
 
-Esta versao cria um Nemo IA em arquitetura profissional, modular e pronta para escalar. O backend foi separado em Node.js + Express e o frontend em React com experiencia de chat estilo ChatGPT. O stack usa MongoDB para historico e memoria, Redis para cache e um orquestrador central para decidir quando chamar Gemini, DeepSeek, multimodal ou fluxo RAG com Brave Search.
+Esta versao cria um Nemo IA em arquitetura profissional, modular e pronta para escalar. O backend foi separado em Node.js + Express e o frontend em React com experiencia de chat moderna. O stack usa MongoDB para historico e memoria, Redis opcional para cache, Socket.io para tempo real e um orquestrador central para decidir quando chamar Gemini, DeepSeek, multimodal ou fluxo RAG com Brave Search.
 
 ## Arquitetura
 
 ```text
-Usuario Web (React)
+Usuario Web (React + TailwindCSS)
   -> API Gateway (Express)
+    -> Socket.io realtime layer
     -> Orquestrador Nemo IA
       -> Classificador de intencao
       -> Router de providers
@@ -88,8 +89,16 @@ docker-compose.yml
 
 ### 8. Frontend estilo ChatGPT
 - Arquivos: `frontend/src/pages/ChatPage.jsx`, `frontend/src/components/*`
-- Sidebar com historico.
-- Janela de chat com mensagens, preview de imagem, digitacao/streaming e loading states.
+- Sidebar estilo WhatsApp Web.
+- Janela de chat com mensagens agrupadas, digitando, status online, anexos e loading states.
+
+### 9. Realtime chat estilo WhatsApp Web
+- Arquivos: `backend/src/chat/*`, `backend/src/socket/register-socket.js`, `frontend/src/hooks/useRealtimeChat.js`
+- Conversas diretas em tempo real.
+- Presenca online/offline.
+- Indicador digitando.
+- Atualizacao instantanea de mensagens via Socket.io.
+- Lazy loading de mensagens.
 
 ## Fluxo de requisicao
 
@@ -105,6 +114,18 @@ docker-compose.yml
 10. Resposta volta em streaming para o frontend.
 11. Historico e memoria sao persistidos no MongoDB.
 12. Respostas frequentes ficam em cache no Redis.
+
+## Fluxo realtime de conversas
+
+1. Usuario autentica no frontend.
+2. Frontend abre conexao Socket.io autenticada com JWT.
+3. Backend registra presenca online.
+4. Sidebar lista conversas e contatos.
+5. Ao abrir uma conversa, frontend entra na sala da conversa.
+6. Ao digitar, evento `chat:typing` atualiza o outro lado.
+7. Ao enviar, evento `chat:message:send` persiste mensagem no MongoDB.
+8. Backend emite `chat:message:new` para os participantes.
+9. Leitura atualiza badge de nao lidas.
 
 ## Variaveis de ambiente
 
@@ -238,6 +259,18 @@ curl -X POST http://localhost:8080/api/chat/message \
   "failures": [],
   "cached": false
 }
+```
+
+### Realtime chat - listar conversas
+```bash
+curl http://localhost:8080/api/realtime-chat/conversations \
+  -H "Authorization: Bearer SEU_TOKEN_JWT"
+```
+
+### Realtime chat - abrir mensagens
+```bash
+curl http://localhost:8080/api/realtime-chat/conversations/CONVERSA_ID/messages?limit=30 \
+  -H "Authorization: Bearer SEU_TOKEN_JWT"
 ```
 
 ## Melhorias naturais daqui

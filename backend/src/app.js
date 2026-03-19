@@ -13,12 +13,9 @@ import chatRoutes from './routes/chat.routes.js';
 import conversationRoutes from './routes/conversation.routes.js';
 import { validateRuntimeConfig } from './config/runtime-check.js';
 import authRoutes from './routes/auth.routes.js';
+import realtimeChatRoutes from './routes/realtime-chat.routes.js';
 
-export async function startServer() {
-  await connectMongo();
-  await connectRedis();
-  validateRuntimeConfig();
-
+export async function createApp() {
   const app = express();
   app.use(helmet());
   const allowedOrigins = [
@@ -43,11 +40,19 @@ export async function startServer() {
   app.use('/api/auth', authRoutes);
   app.use('/api/chat', chatRoutes);
   app.use('/api/conversations', conversationRoutes);
+  app.use('/api/realtime-chat', realtimeChatRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);
 
-  app.listen(env.PORT, () => {
+  return { app, allowedOrigins };
+}
+
+export async function startServer(server) {
+  await connectMongo();
+  await connectRedis();
+  validateRuntimeConfig();
+  server.listen(env.PORT, () => {
     logger.info({ port: env.PORT }, 'Nemo IA backend online');
   });
 }
