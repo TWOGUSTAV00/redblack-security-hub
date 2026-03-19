@@ -37,7 +37,8 @@ export default function ChatPage() {
   return (
     <div className="min-h-screen bg-[#0b141a] text-white">
       <div className="mx-auto flex h-screen max-w-[1800px] overflow-hidden md:p-4">
-        <div className="flex h-full w-full overflow-hidden rounded-none border border-white/5 bg-[#111b21] shadow-2xl md:rounded-[28px]">
+        <div className="relative flex h-full w-full overflow-hidden rounded-none border border-white/5 bg-[#111b21] shadow-2xl md:rounded-[28px]">
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(37,211,102,0.06),transparent_24%),radial-gradient(circle_at_bottom_right,rgba(0,168,132,0.08),transparent_22%)]" />
           <ChatSidebar
             currentUser={auth.user}
             conversations={chat.conversations}
@@ -53,7 +54,7 @@ export default function ChatPage() {
             onLogout={auth.logout}
           />
 
-          <section className="relative flex min-w-0 flex-1 flex-col bg-[#0b141a]">
+          <section className="relative z-10 flex min-w-0 flex-1 flex-col bg-[#0b141a]">
             <ChatHeader
               conversation={chat.activeConversation}
               typingNames={chat.typingNames}
