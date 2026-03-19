@@ -8,6 +8,11 @@ function formatSidebarTime(value) {
   return new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' }).format(date);
 }
 
+function getEntityId(entity) {
+  if (!entity) return '';
+  return String(entity._id || entity.id || '');
+}
+
 export default function ChatSidebar({
   currentUser,
   conversations,
@@ -54,22 +59,25 @@ export default function ChatSidebar({
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {search && contacts.length > 0 && (
+        {contacts.length > 0 && (
           <div className="border-b border-white/5 px-2 pb-2">
             <p className="px-3 py-2 text-[11px] uppercase tracking-[0.24em] text-slate-500">Contatos</p>
-            {contacts.map((contact) => (
+            {contacts.map((contact) => {
+              const contactId = getEntityId(contact);
+              if (!contactId) return null;
+              return (
               <button
-                key={contact.id}
-                onClick={() => onStartConversation(contact)}
+                key={contactId}
+                onClick={() => onStartConversation({ ...contact, id: contactId, _id: contactId })}
                 className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-white/5"
               >
-                <UserAvatar name={contact.name} avatarUrl={contact.avatarUrl} online={onlineUserIds.includes(contact.id)} className="h-11 w-11" />
+                <UserAvatar name={contact.name} avatarUrl={contact.avatarUrl} online={onlineUserIds.includes(contactId)} className="h-11 w-11" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-white">{contact.name}</p>
                   <p className="truncate text-xs text-slate-400">@{contact.username}</p>
                 </div>
               </button>
-            ))}
+            )})}
           </div>
         )}
 

@@ -32,6 +32,31 @@ function unreadFor(conversation, userId) {
   return Number(conversation.unreadCounts?.get?.(String(userId)) ?? conversation.unreadCounts?.[String(userId)] ?? 0);
 }
 
+function buildConversationView(conversation, currentUserId, participantMap) {
+  const safeCurrentUserId = normalizeMongoId(currentUserId);
+  const participantIds = (conversation.participantIds || []).map((participantId) => String(participantId));
+  const otherParticipants = participantIds
+    .filter((participantId) => participantId !== safeCurrentUserId)
+    .map((participantId) => participantMap.get(String(participantId)))
+    .filter(Boolean);
+
+  const counterpart = otherParticipants[0] || null;
+
+  return {
+    id: String(conversation._id),
+    _id: String(conversation._id),
+    type: conversation.type,
+    title: conversation.title || counterpart?.name || 'Nova conversa',
+    avatarUrl: conversation.avatarUrl || counterpart?.avatarUrl || '',
+    participantIds,
+    participants: participantIds.map((id) => participantMap.get(id)).filter(Boolean),
+    counterpart,
+    lastMessageText: conversation.lastMessageText || '',
+    lastMessageAt: conversation.lastMessageAt || conversation.updatedAt || conversation.createdAt || new Date().toISOString(),
+    unreadCount: unreadFor(conversation, safeCurrentUserId)
+  };
+}
+
 async function hydrateParticipantMap(ids) {
   const normalizedIds = uniqueIds(ids.map((id) => normalizeMongoId(id)).filter((id) => mongoose.isValidObjectId(id)));
   if (!normalizedIds.length) {
@@ -67,6 +92,9 @@ export async function listChatContacts(currentUserId, search = '') {
 export async function getOrCreateDirectConversation(currentUserId, otherUserId) {
   const safeCurrentUserId = ensureValidObjectId(currentUserId, 'ID do usuario atual');
   const safeOtherUserId = ensureValidObjectId(otherUserId, 'ID do contato');
+  if (safeCurrentUserId === safeOtherUserId) {
+    throw new AppError('Voce nao pode iniciar conversa com o proprio usuario', 400);
+  }
   const [first, second] = sortPair(safeCurrentUserId, safeOtherUserId);
   let conversation = await ChatConversation.findOne({
     type: 'direct',
@@ -96,26 +124,7 @@ export async function listChatConversations(currentUserId) {
   const participantIds = uniqueIds(conversations.flatMap((conversation) => conversation.participantIds));
   const participantMap = await hydrateParticipantMap(participantIds);
 
-  return conversations.map((conversation) => {
-    const otherParticipants = conversation.participantIds
-      .filter((participantId) => participantId !== String(currentUserId))
-      .filter((participantId) => participantId !== safeCurrentUserId)
-      .map((participantId) => participantMap.get(String(participantId)))
-      .filter(Boolean);
-
-    const counterpart = otherParticipants[0] || null;
-    return {
-      id: String(conversation._id),
-      type: conversation.type,
-      title: conversation.title || counterpart?.name || 'Nova conversa',
-      avatarUrl: conversation.avatarUrl || counterpart?.avatarUrl || '',
-      participantIds: conversation.participantIds,
-      counterpart,
-      lastMessageText: conversation.lastMessageText,
-      lastMessageAt: conversation.lastMessageAt,
-      unreadCount: unreadFor(conversation, currentUserId)
-    };
-  });
+  return conversations.map((conversation) => buildConversationView(conversation, safeCurrentUserId, participantMap));
 }
 
 export async function getConversationDetail(currentUserId, conversationId) {
@@ -127,15 +136,7 @@ export async function getConversationDetail(currentUserId, conversationId) {
   }
 
   const participantMap = await hydrateParticipantMap(conversation.participantIds);
-  return {
-    id: String(conversation._id),
-    type: conversation.type,
-    title: conversation.title || conversation.participantIds.filter((id) => id !== safeCurrentUserId).map((id) => participantMap.get(id)?.name).filter(Boolean).join(', ') || 'Conversa',
-    avatarUrl: conversation.avatarUrl || '',
-    participants: conversation.participantIds.map((id) => participantMap.get(id)).filter(Boolean),
-    lastMessageAt: conversation.lastMessageAt,
-    unreadCount: unreadFor(conversation, currentUserId)
-  };
+  return buildConversationView(conversation, safeCurrentUserId, participantMap);
 }
 
 export async function listMessages(currentUserId, conversationId, { limit = 30, before } = {}) {
@@ -240,15 +241,7 @@ export async function sendChatMessage({ senderId, conversationId, recipientId, t
   const sender = participantMap.get(safeSenderId) || null;
 
   return {
-    conversation: {
-      id: String(conversation._id),
-      type: conversation.type,
-      title: conversation.title || conversation.participantIds.filter((id) => id !== safeSenderId).map((id) => participantMap.get(String(id))?.name).filter(Boolean).join(', ') || 'Conversa',
-      avatarUrl: conversation.avatarUrl || '',
-      participantIds: conversation.participantIds,
-      lastMessageText: conversation.lastMessageText,
-      lastMessageAt: conversation.lastMessageAt
-    },
+    conversation: buildConversationView(conversation.toObject ? conversation.toObject() : conversation, safeSenderId, participantMap),
     message: {
       id: String(message._id),
       conversationId: String(conversation._id),

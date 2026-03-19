@@ -54,7 +54,8 @@ export function useRealtimeChat({ token, user }) {
       listContacts(token, searchTerm)
     ]);
     setConversations(conversationData.conversations || []);
-    setContacts(contactData.contacts || []);
+    const currentUserId = getEntityId(user);
+    setContacts((contactData.contacts || []).filter((contact) => getEntityId(contact) && getEntityId(contact) !== currentUserId));
   }
 
   async function openConversation(conversation, { preserveSidebar = false } = {}) {
@@ -63,17 +64,25 @@ export function useRealtimeChat({ token, user }) {
       setError('Conversa invalida. ID nao encontrado.');
       return;
     }
+    setError('');
     setActiveConversation(conversation);
     setSelectedContact(conversation.counterpart || null);
     setLoadingMessages(true);
-    const data = await getConversationMessages(token, conversationId, { limit: PAGE_SIZE });
-    setMessages(data.messages || []);
-    setHasMoreMessages(Boolean(data.hasMore));
-    setLoadingMessages(false);
-    await markConversationRead(token, conversationId).catch(() => null);
-    socketRef.current?.emit('chat:conversation:join', { conversationId });
-    if (!preserveSidebar) {
-      setMobileSidebarOpen(false);
+    try {
+      const data = await getConversationMessages(token, conversationId, { limit: PAGE_SIZE });
+      setMessages(data.messages || []);
+      setHasMoreMessages(Boolean(data.hasMore));
+      await markConversationRead(token, conversationId).catch(() => null);
+      socketRef.current?.emit('chat:conversation:join', { conversationId });
+      if (!preserveSidebar) {
+        setMobileSidebarOpen(false);
+      }
+    } catch (error) {
+      setMessages([]);
+      setHasMoreMessages(false);
+      setError(error.message || 'Nao foi possivel abrir a conversa.');
+    } finally {
+      setLoadingMessages(false);
     }
   }
 
@@ -84,16 +93,27 @@ export function useRealtimeChat({ token, user }) {
       setError('Contato invalido. ID nao encontrado.');
       return;
     }
-    const data = await createDirectConversation(token, participantId);
-    const conversation = {
-      ...data.conversation,
-      counterpart: contact,
-      lastMessageText: data.conversation.lastMessageText || '',
-      lastMessageAt: data.conversation.lastMessageAt || new Date().toISOString(),
-      unreadCount: 0
-    };
-    setConversations((current) => mergeConversationList(current, conversation));
-    await openConversation(conversation);
+    setError('');
+    setSelectedContact({ ...contact, id: participantId, _id: participantId });
+    try {
+      const data = await createDirectConversation(token, participantId);
+      const conversation = {
+        ...data.conversation,
+        id: getEntityId(data.conversation),
+        _id: getEntityId(data.conversation),
+        counterpart: data.conversation?.counterpart || { ...contact, id: participantId, _id: participantId },
+        lastMessageText: data.conversation?.lastMessageText || '',
+        lastMessageAt: data.conversation?.lastMessageAt || new Date().toISOString(),
+        unreadCount: Number(data.conversation?.unreadCount || 0)
+      };
+      if (!conversation.id) {
+        throw new Error('Conversa criada sem ID valido.');
+      }
+      setConversations((current) => mergeConversationList(current, conversation));
+      await openConversation(conversation);
+    } catch (error) {
+      setError(error.message || 'Nao foi possivel iniciar a conversa com esse usuario.');
+    }
   }
 
   async function loadOlderMessages() {
@@ -218,6 +238,7 @@ export function useRealtimeChat({ token, user }) {
       setError('Selecione uma conversa ou um contato para enviar mensagem.');
       return;
     }
+    setError('');
 
     const payload = {
       conversationId,
