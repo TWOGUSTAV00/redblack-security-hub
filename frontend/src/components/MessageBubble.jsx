@@ -16,6 +16,8 @@ export default function MessageBubble({ message, mine, showAvatar, senderName })
             {message.attachments.map((attachment, index) => (
               attachment.kind === 'image' ? (
                 <img key={`${attachment.url}-${index}`} src={attachment.url} alt={attachment.name || 'imagem'} className="max-h-72 w-full rounded-xl object-cover" />
+              ) : attachment.kind === 'audio' ? (
+                <audio key={`${attachment.url}-${index}`} src={attachment.url} controls className="w-full max-w-xs rounded-xl" preload="metadata" />
               ) : (
                 <a key={`${attachment.url}-${index}`} href={attachment.url} target="_blank" rel="noreferrer" className="rounded-xl bg-black/20 px-3 py-2 text-xs text-emerald-100 underline underline-offset-2">
                   {attachment.name || 'Arquivo'}

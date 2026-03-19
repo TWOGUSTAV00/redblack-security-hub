@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 
 const attachmentSchema = new mongoose.Schema({
-  kind: { type: String, enum: ['image', 'file'], default: 'image' },
+  kind: { type: String, enum: ['image', 'file', 'audio'], default: 'image' },
   name: { type: String, default: '' },
   url: { type: String, default: '' },
   mimeType: { type: String, default: '' },

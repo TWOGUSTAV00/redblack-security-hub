@@ -24,8 +24,34 @@ function ensureValidObjectId(value, label = 'ID') {
 
 function previewText(text = '', attachments = []) {
   if (text?.trim()) return text.trim().slice(0, 140);
-  if (attachments.length) return attachments[0].kind === 'image' ? 'Imagem' : 'Arquivo';
+  if (attachments.length) {
+    if (attachments[0].kind === 'image') return 'Imagem';
+    if (attachments[0].kind === 'audio') return 'Audio';
+    return 'Arquivo';
+  }
   return 'Mensagem';
+}
+
+async function resolveUserReference(value, label = 'ID do contato') {
+  const normalized = normalizeMongoId(value);
+  console.log(`${label} recebido:`, normalized);
+  if (!normalized) {
+    throw new AppError(`${label} invalido`, 400);
+  }
+
+  if (mongoose.isValidObjectId(normalized)) {
+    const userById = await User.findById(normalized).lean();
+    if (!userById) {
+      throw new AppError('Usuario nao encontrado', 404);
+    }
+    return String(userById._id);
+  }
+
+  const userByUsername = await User.findOne({ username: String(normalized).trim().toLowerCase() }).lean();
+  if (!userByUsername) {
+    throw new AppError(`${label} invalido`, 400);
+  }
+  return String(userByUsername._id);
 }
 
 function unreadFor(conversation, userId) {
@@ -91,7 +117,7 @@ export async function listChatContacts(currentUserId, search = '') {
 
 export async function getOrCreateDirectConversation(currentUserId, otherUserId) {
   const safeCurrentUserId = ensureValidObjectId(currentUserId, 'ID do usuario atual');
-  const safeOtherUserId = ensureValidObjectId(otherUserId, 'ID do contato');
+  const safeOtherUserId = await resolveUserReference(otherUserId, 'ID do contato');
   if (safeCurrentUserId === safeOtherUserId) {
     throw new AppError('Voce nao pode iniciar conversa com o proprio usuario', 400);
   }
@@ -197,7 +223,7 @@ export async function markConversationRead(currentUserId, conversationId) {
 export async function sendChatMessage({ senderId, conversationId, recipientId, text = '', attachments = [] }) {
   const safeSenderId = ensureValidObjectId(senderId, 'ID do remetente');
   const normalizedAttachments = (attachments || []).map((attachment) => ({
-    kind: attachment.kind === 'file' ? 'file' : 'image',
+    kind: attachment.kind === 'file' ? 'file' : attachment.kind === 'audio' ? 'audio' : 'image',
     name: attachment.name || '',
     url: attachment.url || '',
     mimeType: attachment.mimeType || '',

@@ -10,7 +10,7 @@ function formatSidebarTime(value) {
 
 function getEntityId(entity) {
   if (!entity) return '';
-  return String(entity._id || entity.id || '');
+  return String(entity._id || entity.id || entity.username || '');
 }
 
 export default function ChatSidebar({
@@ -68,7 +68,7 @@ export default function ChatSidebar({
               return (
               <button
                 key={contactId}
-                onClick={() => onStartConversation({ ...contact, id: contactId, _id: contactId })}
+                onClick={() => onStartConversation({ ...contact, id: contactId, _id: contact._id || '', username: contact.username || '' })}
                 className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-white/5"
               >
                 <UserAvatar name={contact.name} avatarUrl={contact.avatarUrl} online={onlineUserIds.includes(contactId)} className="h-11 w-11" />

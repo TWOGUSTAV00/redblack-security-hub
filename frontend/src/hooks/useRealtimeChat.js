@@ -9,6 +9,18 @@ function getEntityId(entity) {
   return String(entity._id || entity.id || '');
 }
 
+function normalizeChatEntity(entity) {
+  if (!entity) return null;
+  const normalizedId = getEntityId(entity) || String(entity.username || '').trim().toLowerCase();
+  if (!normalizedId) return null;
+  return {
+    ...entity,
+    id: normalizedId,
+    _id: entity._id || (normalizedId.length === 24 ? normalizedId : ''),
+    username: entity.username || ''
+  };
+}
+
 function attachmentsSignature(attachments = []) {
   return attachments.map((attachment) => `${attachment.kind}:${attachment.name}:${attachment.url}`).join('|');
 }
@@ -55,7 +67,12 @@ export function useRealtimeChat({ token, user }) {
     ]);
     setConversations(conversationData.conversations || []);
     const currentUserId = getEntityId(user);
-    setContacts((contactData.contacts || []).filter((contact) => getEntityId(contact) && getEntityId(contact) !== currentUserId));
+    setContacts(
+      (contactData.contacts || [])
+        .map((contact) => normalizeChatEntity(contact))
+        .filter(Boolean)
+        .filter((contact) => getEntityId(contact) !== currentUserId && contact.username !== user?.username)
+    );
   }
 
   async function openConversation(conversation, { preserveSidebar = false } = {}) {
@@ -88,20 +105,22 @@ export function useRealtimeChat({ token, user }) {
 
   async function startConversation(contact) {
     const participantId = getEntityId(contact);
-    console.log('ID enviado para criar conversa:', participantId, contact);
-    if (!token || !participantId) {
+    const normalizedContact = normalizeChatEntity(contact);
+    const participantReference = normalizedContact?._id || normalizedContact?.id || normalizedContact?.username || '';
+    console.log('ID enviado para criar conversa:', participantReference, normalizedContact);
+    if (!token || !participantReference) {
       setError('Contato invalido. ID nao encontrado.');
       return;
     }
     setError('');
-    setSelectedContact({ ...contact, id: participantId, _id: participantId });
+    setSelectedContact(normalizedContact);
     try {
-      const data = await createDirectConversation(token, participantId);
+      const data = await createDirectConversation(token, participantReference);
       const conversation = {
         ...data.conversation,
         id: getEntityId(data.conversation),
         _id: getEntityId(data.conversation),
-        counterpart: data.conversation?.counterpart || { ...contact, id: participantId, _id: participantId },
+        counterpart: normalizeChatEntity(data.conversation?.counterpart) || normalizedContact,
         lastMessageText: data.conversation?.lastMessageText || '',
         lastMessageAt: data.conversation?.lastMessageAt || new Date().toISOString(),
         unreadCount: Number(data.conversation?.unreadCount || 0)
@@ -220,6 +239,11 @@ export function useRealtimeChat({ token, user }) {
     setAttachments((current) => current.filter((attachment) => attachment.id !== id));
   }
 
+  function handleAudioRecorded(audioAttachment) {
+    if (!audioAttachment) return;
+    setAttachments((current) => [...current, audioAttachment]);
+  }
+
   async function sendMessage() {
     if (!socketRef.current) return;
     if (!draft.trim() && !attachments.length) return;
@@ -321,6 +345,7 @@ export function useRealtimeChat({ token, user }) {
     handleDraftChange,
     handleFiles,
     removeAttachment,
+    handleAudioRecorded,
     sendMessage,
     refreshSidebar
   };

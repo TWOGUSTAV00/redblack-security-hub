@@ -85,6 +85,7 @@ export default function ChatPage() {
                   onDraftChange={chat.handleDraftChange}
                   onSend={chat.sendMessage}
                   onFiles={chat.handleFiles}
+                  onAudioRecorded={chat.handleAudioRecorded}
                   attachments={chat.attachments}
                   onRemoveAttachment={chat.removeAttachment}
                 />
