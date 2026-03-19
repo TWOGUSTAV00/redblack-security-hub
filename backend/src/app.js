@@ -15,12 +15,25 @@ import { validateRuntimeConfig } from './config/runtime-check.js';
 import authRoutes from './routes/auth.routes.js';
 
 export async function startServer() {
-  await Promise.all([connectMongo(), connectRedis()]);
+  await connectMongo();
+  await connectRedis();
   validateRuntimeConfig();
 
   const app = express();
   app.use(helmet());
-  app.use(cors({ origin: env.FRONTEND_URL, credentials: true }));
+  const allowedOrigins = [
+    env.FRONTEND_URL,
+    ...(env.FRONTEND_URLS ? env.FRONTEND_URLS.split(',').map((item) => item.trim()).filter(Boolean) : [])
+  ];
+  app.use(cors({
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(null, env.NODE_ENV !== 'production');
+    },
+    credentials: true
+  }));
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true }));
   app.use(pinoHttp({ logger }));

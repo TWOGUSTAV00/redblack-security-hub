@@ -15,6 +15,8 @@ export function validateRuntimeConfig() {
   logger.info({
     mongoConfigured: Boolean(env.MONGODB_URI),
     redisConfigured: Boolean(env.REDIS_URL),
+    frontendUrl: env.FRONTEND_URL,
+    frontendUrls: env.FRONTEND_URLS || '',
     geminiConfigured: maskSecret(env.GEMINI_API_KEY),
     deepseekConfigured: maskSecret(env.DEEPSEEK_API_KEY),
     braveConfigured: maskSecret(env.BRAVE_SEARCH_API_KEY),

@@ -111,6 +111,7 @@ docker-compose.yml
 ### Backend
 - `PORT`
 - `FRONTEND_URL`
+- `FRONTEND_URLS`
 - `MONGODB_URI`
 - `MONGO_URI` (alias)
 - `MONGODB_URL` (alias)
@@ -161,6 +162,8 @@ Se o seu provedor usar outros nomes, o backend tambem aceita aliases comuns:
 - Redis: `REDISCLOUD_URL`
 
 Foi adicionado um blueprint separado em [render-node.yaml](C:\Users\Fiscal\Documents\New project\render-node.yaml) para subir essa nova stack sem substituir o servico Flask atual.
+
+Se o Redis nao estiver configurado, o backend agora sobe normalmente sem cache.
 
 ## Como rodar sem Docker
 
