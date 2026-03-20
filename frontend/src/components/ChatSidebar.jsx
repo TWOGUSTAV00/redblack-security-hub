@@ -10,8 +10,7 @@ function formatSidebarTime(value) {
 
 function getEntityId(entity) {
   if (!entity) return '';
-  const candidate = entity._id || entity.id || '';
-  return typeof candidate === 'string' && candidate.length === 24 ? String(candidate) : '';
+  return String(entity.id || entity._id || '');
 }
 
 export default function ChatSidebar({
@@ -29,16 +28,17 @@ export default function ChatSidebar({
   onLogout
 }) {
   function handleContactClick(contact) {
-    console.log(contact);
-    const mongoId = getEntityId(contact);
-    if (!contact || (!mongoId && !contact.username)) {
+    console.log('USER:', contact);
+    console.log('ID:', contact?._id || contact?.id);
+    const safeId = getEntityId(contact);
+    if (!contact || !safeId) {
       console.error('Usuário inválido:', contact);
       return;
     }
     onStartConversation({
       ...contact,
-      _id: mongoId,
-      id: mongoId || contact.id || '',
+      _id: String(contact._id || safeId),
+      id: String(contact.id || safeId),
       username: contact.username || ''
     });
   }
@@ -80,7 +80,10 @@ export default function ChatSidebar({
             <p className="px-3 py-2 text-[11px] uppercase tracking-[0.24em] text-slate-500">Contatos</p>
             {contacts.map((contact) => {
               const contactId = getEntityId(contact);
-              if (!contactId) return null;
+              if (!contactId) {
+                console.error('Contato sem id valido na sidebar:', contact);
+                return null;
+              }
               return (
               <button
                 key={contactId}

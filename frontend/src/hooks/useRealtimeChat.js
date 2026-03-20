@@ -6,19 +6,18 @@ const PAGE_SIZE = 30;
 
 function getEntityId(entity) {
   if (!entity) return '';
-  const candidate = entity._id || entity.id || '';
-  return typeof candidate === 'string' && candidate.length === 24 ? String(candidate) : '';
+  return String(entity.id || entity._id || '');
 }
 
 function normalizeChatEntity(entity) {
   if (!entity) return null;
-  const normalizedId = getEntityId(entity);
+  const normalizedId = String(entity.id || entity._id || '');
   const normalizedUsername = String(entity.username || '').trim().toLowerCase();
   if (!normalizedId && !normalizedUsername) return null;
   return {
     ...entity,
-    id: normalizedId || entity.id || '',
-    _id: normalizedId,
+    id: normalizedId,
+    _id: String(entity._id || normalizedId),
     username: normalizedUsername
   };
 }
@@ -67,13 +66,14 @@ export function useRealtimeChat({ token, user }) {
       listConversations(token),
       listContacts(token, searchTerm)
     ]);
+    console.log('CONTACTS API:', contactData.contacts || []);
     setConversations(conversationData.conversations || []);
-    const currentUserId = getEntityId(user);
+    const currentUserId = String(user?.id || user?._id || '');
     setContacts(
       (contactData.contacts || [])
         .map((contact) => normalizeChatEntity(contact))
         .filter(Boolean)
-        .filter((contact) => getEntityId(contact) !== currentUserId && contact.username !== user?.username)
+        .filter((contact) => String(contact.id || contact._id || '') !== currentUserId && contact.username !== user?.username)
     );
   }
 
@@ -108,12 +108,13 @@ export function useRealtimeChat({ token, user }) {
   async function startConversation(contact) {
     const normalizedContact = normalizeChatEntity(contact);
     console.log('Contato clicado:', contact);
-    if (!normalizedContact || (!normalizedContact._id && !normalizedContact.username)) {
+    console.log('ID normalizado:', normalizedContact?.id, normalizedContact?._id);
+    if (!normalizedContact || !normalizedContact.id) {
       console.error('Usuario invalido:', contact);
       setError('Contato invalido. ID nao encontrado.');
       return;
     }
-    const participantId = normalizedContact._id;
+    const participantId = normalizedContact.id;
     setError('');
     setSelectedContact(normalizedContact);
     try {

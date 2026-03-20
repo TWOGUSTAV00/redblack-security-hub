@@ -4,6 +4,7 @@ import { listChatContacts, listChatConversations, getConversationDetail, listMes
 export async function getContacts(req, res, next) {
   try {
     const contacts = await listChatContacts(req.user.id, req.query.q || '');
+    console.log('contacts enviados:', contacts.map((contact) => ({ id: contact.id, _id: contact._id, username: contact.username })));
     res.json({ success: true, contacts });
   } catch (error) {
     next(error);

@@ -107,6 +107,7 @@ export async function listChatContacts(currentUserId, search = '') {
   }
   const users = await User.find(query).sort({ displayName: 1 }).limit(40).lean();
   return users.map((user) => ({
+    ...user,
     id: String(user._id),
     _id: String(user._id),
     username: user.username,
