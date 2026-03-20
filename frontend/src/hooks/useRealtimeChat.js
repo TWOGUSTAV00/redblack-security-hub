@@ -6,18 +6,20 @@ const PAGE_SIZE = 30;
 
 function getEntityId(entity) {
   if (!entity) return '';
-  return String(entity._id || entity.id || '');
+  const candidate = entity._id || entity.id || '';
+  return typeof candidate === 'string' && candidate.length === 24 ? String(candidate) : '';
 }
 
 function normalizeChatEntity(entity) {
   if (!entity) return null;
-  const normalizedId = getEntityId(entity) || String(entity.username || '').trim().toLowerCase();
-  if (!normalizedId) return null;
+  const normalizedId = getEntityId(entity);
+  const normalizedUsername = String(entity.username || '').trim().toLowerCase();
+  if (!normalizedId && !normalizedUsername) return null;
   return {
     ...entity,
-    id: normalizedId,
-    _id: entity._id || (normalizedId.length === 24 ? normalizedId : ''),
-    username: entity.username || ''
+    id: normalizedId || entity.id || '',
+    _id: normalizedId,
+    username: normalizedUsername
   };
 }
 
@@ -104,21 +106,21 @@ export function useRealtimeChat({ token, user }) {
   }
 
   async function startConversation(contact) {
-    const participantId = getEntityId(contact);
     const normalizedContact = normalizeChatEntity(contact);
-    const participantReference = normalizedContact?._id || normalizedContact?.id || normalizedContact?.username || '';
-    console.log('ID enviado para criar conversa:', participantReference, normalizedContact);
-    if (!token || !participantReference) {
+    console.log('Contato clicado:', contact);
+    if (!normalizedContact || (!normalizedContact._id && !normalizedContact.username)) {
+      console.error('Usuario invalido:', contact);
       setError('Contato invalido. ID nao encontrado.');
       return;
     }
+    const participantId = normalizedContact._id;
     setError('');
     setSelectedContact(normalizedContact);
     try {
-      const data = await createDirectConversation(token, participantReference, normalizedContact?.username || '');
+      const data = await createDirectConversation(token, participantId, normalizedContact.username || '');
       const conversation = {
         ...data.conversation,
-        id: getEntityId(data.conversation),
+        id: getEntityId(data.conversation) || data.conversation?.id || '',
         _id: getEntityId(data.conversation),
         counterpart: normalizeChatEntity(data.conversation?.counterpart) || normalizedContact,
         lastMessageText: data.conversation?.lastMessageText || '',

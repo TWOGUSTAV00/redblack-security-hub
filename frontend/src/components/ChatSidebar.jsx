@@ -10,7 +10,8 @@ function formatSidebarTime(value) {
 
 function getEntityId(entity) {
   if (!entity) return '';
-  return String(entity._id || entity.id || entity.username || '');
+  const candidate = entity._id || entity.id || '';
+  return typeof candidate === 'string' && candidate.length === 24 ? String(candidate) : '';
 }
 
 export default function ChatSidebar({
@@ -27,6 +28,21 @@ export default function ChatSidebar({
   onCloseMobile,
   onLogout
 }) {
+  function handleContactClick(contact) {
+    console.log(contact);
+    const mongoId = getEntityId(contact);
+    if (!contact || (!mongoId && !contact.username)) {
+      console.error('Usuário inválido:', contact);
+      return;
+    }
+    onStartConversation({
+      ...contact,
+      _id: mongoId,
+      id: mongoId || contact.id || '',
+      username: contact.username || ''
+    });
+  }
+
   return (
     <aside className={clsx(
       'fixed inset-y-0 left-0 z-30 w-full max-w-sm flex-col border-r border-white/5 bg-[#111b21] md:static md:flex md:w-[380px]',
@@ -68,7 +84,7 @@ export default function ChatSidebar({
               return (
               <button
                 key={contactId}
-                onClick={() => onStartConversation({ ...contact, id: contactId, _id: contact._id || '', username: contact.username || '' })}
+                onClick={() => handleContactClick(contact)}
                 className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-white/5"
               >
                 <UserAvatar name={contact.name} avatarUrl={contact.avatarUrl} online={onlineUserIds.includes(contactId)} className="h-11 w-11" />

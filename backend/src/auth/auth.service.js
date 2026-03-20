@@ -20,6 +20,7 @@ function signToken(user) {
 
 function sanitizeUser(user) {
   return {
+    _id: String(user._id || user.id),
     id: user.id,
     username: user.username,
     name: user.displayName,

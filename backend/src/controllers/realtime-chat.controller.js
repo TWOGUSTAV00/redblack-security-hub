@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { listChatContacts, listChatConversations, getConversationDetail, listMessages, getOrCreateDirectConversation, markConversationRead } from '../chat/chat.service.js';
 
 export async function getContacts(req, res, next) {
@@ -20,13 +21,26 @@ export async function getConversations(req, res, next) {
 
 export async function createDirectConversation(req, res, next) {
   try {
-    const participantReference = req.body.participantId || req.body.participantUsername || req.body.username || '';
+    const participantId = String(req.body.participantId || req.body._id || '').trim();
+    const participantUsername = String(req.body.participantUsername || req.body.username || '').trim().toLowerCase();
     console.log('createDirectConversation payload:', {
       currentUserId: req.user.id,
-      participantId: req.body.participantId,
-      participantUsername: req.body.participantUsername,
-      username: req.body.username
+      participantId,
+      participantUsername
     });
+
+    if (!participantId && !participantUsername) {
+      return res.status(400).json({ success: false, message: 'ID invalido' });
+    }
+
+    if (participantId && !mongoose.Types.ObjectId.isValid(participantId) && !participantUsername) {
+      return res.status(400).json({ success: false, message: 'ID invalido' });
+    }
+
+    const participantReference = mongoose.Types.ObjectId.isValid(participantId)
+      ? participantId
+      : participantUsername;
+
     const conversation = await getOrCreateDirectConversation(req.user.id, participantReference);
     const detail = await getConversationDetail(req.user.id, conversation.id);
     res.status(201).json({ success: true, conversation: detail });
