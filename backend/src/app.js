@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import pinoHttp from 'pino-http';
+import path from 'node:path';
 import { env } from './config/env.js';
 import { connectMongo } from './config/db.js';
 import { connectRedis } from './config/redis.js';
@@ -33,6 +34,7 @@ export async function createApp() {
   }));
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true }));
+  app.use('/uploads', express.static(path.resolve(process.cwd(), 'backend', 'uploads')));
   app.use(pinoHttp({ logger }));
   app.use(requestLogger);
 

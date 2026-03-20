@@ -1,283 +1,282 @@
+import mongoose from 'mongoose';
+import { User } from '../auth/user.model.js';
 import { ChatConversation } from './chat-conversation.model.js';
 import { ChatMessage } from './chat-message.model.js';
-import { User } from '../auth/user.model.js';
 import { AppError } from '../utils/errors.js';
-import { uniqueIds, sortPair } from './chat.utils.js';
-import mongoose from 'mongoose';
+import { decryptMessageText, encryptMessageText } from '../utils/crypto.js';
 
-function normalizeMongoId(value) {
-  if (!value) return '';
-  if (typeof value === 'object') {
-    return String(value._id || value.id || '');
-  }
-  return String(value);
-}
-
-function ensureValidObjectId(value, label = 'ID') {
-  const normalized = normalizeMongoId(value);
-  console.log(`${label} recebido:`, normalized);
-  if (!normalized || !mongoose.isValidObjectId(normalized)) {
+function toObjectId(value, label = 'ID') {
+  const normalized = String(value || '').trim();
+  if (!normalized || !mongoose.Types.ObjectId.isValid(normalized)) {
     throw new AppError(`${label} invalido`, 400);
   }
-  return normalized;
+  return new mongoose.Types.ObjectId(normalized);
 }
 
-function previewText(text = '', attachments = []) {
-  if (text?.trim()) return text.trim().slice(0, 140);
-  if (attachments.length) {
-    if (attachments[0].kind === 'image') return 'Imagem';
-    if (attachments[0].kind === 'audio') return 'Audio';
+function buildParticipantKey(userIds) {
+  return [...userIds].map((id) => String(id)).sort().join(':');
+}
+
+function sanitizeUser(user) {
+  if (!user) return null;
+  return {
+    id: String(user._id),
+    _id: String(user._id),
+    name: user.name,
+    email: user.email,
+    avatarUrl: user.avatarUrl || '',
+    status: user.status || 'offline'
+  };
+}
+
+function messagePreview(message) {
+  if (message.text) return message.text.slice(0, 120);
+  if (message.media?.length) {
+    if (message.media[0].type === 'image') return 'Imagem';
+    if (message.media[0].type === 'video') return 'Video';
+    if (message.media[0].type === 'audio') return 'Audio';
     return 'Arquivo';
   }
   return 'Mensagem';
 }
 
-async function resolveUserReference(value, label = 'ID do contato') {
-  const normalized = normalizeMongoId(value);
-  console.log(`${label} recebido:`, normalized);
-  if (!normalized) {
-    throw new AppError(`${label} invalido`, 400);
-  }
-
-  if (mongoose.isValidObjectId(normalized)) {
-    const userById = await User.findById(normalized).lean();
-    if (!userById) {
-      throw new AppError('Usuario nao encontrado', 404);
-    }
-    return String(userById._id);
-  }
-
-  const userByUsername = await User.findOne({ username: String(normalized).trim().toLowerCase() }).lean();
-  if (!userByUsername) {
-    throw new AppError(`${label} invalido`, 400);
-  }
-  return String(userByUsername._id);
-}
-
-function unreadFor(conversation, userId) {
-  return Number(conversation.unreadCounts?.get?.(String(userId)) ?? conversation.unreadCounts?.[String(userId)] ?? 0);
-}
-
-function buildConversationView(conversation, currentUserId, participantMap) {
-  const safeCurrentUserId = normalizeMongoId(currentUserId);
-  const participantIds = (conversation.participantIds || []).map((participantId) => String(participantId));
-  const otherParticipants = participantIds
-    .filter((participantId) => participantId !== safeCurrentUserId)
-    .map((participantId) => participantMap.get(String(participantId)))
-    .filter(Boolean);
-
-  const counterpart = otherParticipants[0] || null;
-
+function sanitizeMessage(message, currentUserId, senderMap) {
+  const deletedForIds = (message.deletedFor || []).map((item) => String(item));
+  const isDeletedForCurrentUser = deletedForIds.includes(String(currentUserId));
   return {
-    id: String(conversation._id),
-    _id: String(conversation._id),
-    type: conversation.type,
-    title: conversation.title || counterpart?.name || 'Nova conversa',
-    avatarUrl: conversation.avatarUrl || counterpart?.avatarUrl || '',
-    participantIds,
-    participants: participantIds.map((id) => participantMap.get(id)).filter(Boolean),
-    counterpart,
-    lastMessageText: conversation.lastMessageText || '',
-    lastMessageAt: conversation.lastMessageAt || conversation.updatedAt || conversation.createdAt || new Date().toISOString(),
-    unreadCount: unreadFor(conversation, safeCurrentUserId)
+    id: String(message._id),
+    conversationId: String(message.conversationId),
+    senderId: String(message.senderId),
+    sender: senderMap.get(String(message.senderId)) || null,
+    text: message.deletedForEveryone || isDeletedForCurrentUser ? '' : (message.text || decryptMessageText(message.encryptedText) || ''),
+    media: message.deletedForEveryone || isDeletedForCurrentUser ? [] : (message.media || []),
+    deletedForEveryone: Boolean(message.deletedForEveryone),
+    deletedFor: deletedForIds,
+    createdAt: message.createdAt,
+    readBy: (message.readBy || []).map((id) => String(id))
   };
 }
 
-async function hydrateParticipantMap(ids) {
-  const normalizedIds = uniqueIds(ids.map((id) => normalizeMongoId(id)).filter((id) => mongoose.isValidObjectId(id)));
-  if (!normalizedIds.length) {
-    return new Map();
+async function loadUsersMap(userIds) {
+  const uniqueIds = [...new Set(userIds.map((id) => String(id)).filter(Boolean))];
+  const users = await User.find({ _id: { $in: uniqueIds } }).lean();
+  return new Map(users.map((user) => [String(user._id), sanitizeUser(user)]));
+}
+
+async function getUserByReference(reference) {
+  const value = String(reference || '').trim();
+  if (!value) {
+    throw new AppError('Contato invalido', 400);
   }
-  const users = await User.find({ _id: { $in: normalizedIds } }).lean();
-  return new Map(users.map((user) => [String(user._id), {
-    id: String(user._id),
-    _id: String(user._id),
-    username: user.username,
-    name: user.displayName,
-    avatarUrl: user.avatarUrl || ''
-  }]));
+
+  if (mongoose.Types.ObjectId.isValid(value)) {
+    const user = await User.findById(value).lean();
+    if (user) return user;
+  }
+
+  const user = await User.findOne({ email: value.toLowerCase() }).lean();
+  if (user) return user;
+
+  throw new AppError('Contato nao encontrado', 404);
 }
 
 export async function listChatContacts(currentUserId, search = '') {
-  const safeCurrentUserId = ensureValidObjectId(currentUserId, 'ID do usuario atual');
+  const currentId = toObjectId(currentUserId, 'ID do usuario atual');
   const regex = search ? new RegExp(search, 'i') : null;
-  const query = { _id: { $ne: safeCurrentUserId } };
+  const query = { _id: { $ne: currentId } };
   if (regex) {
-    query.$or = [{ username: regex }, { displayName: regex }];
+    query.$or = [{ name: regex }, { email: regex }];
   }
-  const users = await User.find(query).sort({ displayName: 1 }).limit(40).lean();
-  return users.map((user) => ({
-    ...user,
-    id: String(user._id),
-    _id: String(user._id),
-    username: user.username,
-    name: user.displayName,
-    avatarUrl: user.avatarUrl || ''
-  }));
+
+  const users = await User.find(query).sort({ name: 1 }).limit(50).lean();
+  return users.map((user) => sanitizeUser(user));
 }
 
-export async function getOrCreateDirectConversation(currentUserId, otherUserId) {
-  const safeCurrentUserId = ensureValidObjectId(currentUserId, 'ID do usuario atual');
-  const safeOtherUserId = await resolveUserReference(otherUserId, 'ID do contato');
-  if (safeCurrentUserId === safeOtherUserId) {
+export async function addContact(currentUserId, contactId) {
+  const currentId = toObjectId(currentUserId, 'ID do usuario atual');
+  const contactObjectId = toObjectId(contactId, 'ID do contato');
+  if (String(currentId) === String(contactObjectId)) {
+    throw new AppError('Voce nao pode adicionar a propria conta', 400);
+  }
+
+  await User.updateOne(
+    { _id: currentId, 'contacts.userId': { $ne: contactObjectId } },
+    { $push: { contacts: { userId: contactObjectId } } }
+  );
+
+  const contact = await User.findById(contactObjectId).lean();
+  if (!contact) {
+    throw new AppError('Contato nao encontrado', 404);
+  }
+  return sanitizeUser(contact);
+}
+
+export async function getOrCreateDirectConversation(currentUserId, otherUserReference) {
+  const currentId = toObjectId(currentUserId, 'ID do usuario atual');
+  const otherUser = await getUserByReference(otherUserReference);
+  const otherId = toObjectId(otherUser._id, 'ID do contato');
+  if (String(currentId) === String(otherId)) {
     throw new AppError('Voce nao pode iniciar conversa com o proprio usuario', 400);
   }
-  const [first, second] = sortPair(safeCurrentUserId, safeOtherUserId);
-  let conversation = await ChatConversation.findOne({
-    type: 'direct',
-    participantIds: { $all: [first, second], $size: 2 }
-  });
 
+  const participantKey = buildParticipantKey([currentId, otherId]);
+  let conversation = await ChatConversation.findOne({ participantKey });
   if (!conversation) {
     conversation = await ChatConversation.create({
-      type: 'direct',
-      participantIds: [first, second],
-      unreadCounts: {
-        [first]: 0,
-        [second]: 0
-      }
+      participants: [currentId, otherId],
+      participantKey,
+      createdBy: currentId,
+      lastMessageAt: new Date()
     });
   }
-
   return conversation;
 }
 
 export async function listChatConversations(currentUserId) {
-  const safeCurrentUserId = ensureValidObjectId(currentUserId, 'ID do usuario atual');
-  const conversations = await ChatConversation.find({ participantIds: safeCurrentUserId })
+  const currentId = toObjectId(currentUserId, 'ID do usuario atual');
+  const conversations = await ChatConversation.find({ participants: currentId })
     .sort({ lastMessageAt: -1 })
+    .populate('participants', 'name email avatarUrl status')
     .lean();
 
-  const participantIds = uniqueIds(conversations.flatMap((conversation) => conversation.participantIds));
-  const participantMap = await hydrateParticipantMap(participantIds);
+  return conversations.map((conversation) => {
+    const counterpart = (conversation.participants || [])
+      .map((user) => sanitizeUser(user))
+      .find((user) => user.id !== String(currentId)) || null;
 
-  return conversations.map((conversation) => buildConversationView(conversation, safeCurrentUserId, participantMap));
+    return {
+      id: String(conversation._id),
+      participants: (conversation.participants || []).map((user) => sanitizeUser(user)),
+      counterpart,
+      title: counterpart?.name || 'Nova conversa',
+      avatarUrl: counterpart?.avatarUrl || '',
+      lastMessagePreview: conversation.lastMessagePreview || '',
+      lastMessageAt: conversation.lastMessageAt,
+      unreadCount: 0
+    };
+  });
 }
 
 export async function getConversationDetail(currentUserId, conversationId) {
-  const safeCurrentUserId = ensureValidObjectId(currentUserId, 'ID do usuario atual');
-  const safeConversationId = ensureValidObjectId(conversationId, 'ID da conversa');
-  const conversation = await ChatConversation.findOne({ _id: safeConversationId, participantIds: safeCurrentUserId }).lean();
+  const currentId = toObjectId(currentUserId, 'ID do usuario atual');
+  const conversationObjectId = toObjectId(conversationId, 'ID da conversa');
+  const conversation = await ChatConversation.findOne({ _id: conversationObjectId, participants: currentId })
+    .populate('participants', 'name email avatarUrl status')
+    .lean();
+
   if (!conversation) {
     throw new AppError('Conversa nao encontrada', 404);
   }
 
-  const participantMap = await hydrateParticipantMap(conversation.participantIds);
-  return buildConversationView(conversation, safeCurrentUserId, participantMap);
+  const participants = (conversation.participants || []).map((user) => sanitizeUser(user));
+  const counterpart = participants.find((user) => user.id !== String(currentId)) || null;
+  return {
+    id: String(conversation._id),
+    participants,
+    counterpart,
+    title: counterpart?.name || 'Nova conversa',
+    avatarUrl: counterpart?.avatarUrl || '',
+    lastMessagePreview: conversation.lastMessagePreview || '',
+    lastMessageAt: conversation.lastMessageAt
+  };
 }
 
 export async function listMessages(currentUserId, conversationId, { limit = 30, before } = {}) {
-  const safeCurrentUserId = ensureValidObjectId(currentUserId, 'ID do usuario atual');
-  const safeConversationId = ensureValidObjectId(conversationId, 'ID da conversa');
-  const conversation = await ChatConversation.findOne({ _id: safeConversationId, participantIds: safeCurrentUserId }).lean();
+  const currentId = toObjectId(currentUserId, 'ID do usuario atual');
+  const conversationObjectId = toObjectId(conversationId, 'ID da conversa');
+  const conversation = await ChatConversation.findOne({ _id: conversationObjectId, participants: currentId }).lean();
   if (!conversation) {
     throw new AppError('Conversa nao encontrada', 404);
   }
 
-  const query = { conversationId: safeConversationId };
+  const query = { conversationId: conversationObjectId };
   if (before) {
     query.createdAt = { $lt: new Date(before) };
   }
 
-  const safeLimit = Math.min(Number(limit) || 30, 60);
-  const messages = await ChatMessage.find(query)
+  const items = await ChatMessage.find(query)
     .sort({ createdAt: -1 })
-    .limit(safeLimit)
+    .limit(Math.min(Number(limit) || 30, 60))
     .lean();
 
-  const senderIds = uniqueIds(messages.map((message) => message.senderId));
-  const participantMap = await hydrateParticipantMap(senderIds);
-
-  const ordered = messages.reverse().map((message) => ({
-    id: String(message._id),
-    conversationId: message.conversationId,
-    senderId: message.senderId,
-    sender: participantMap.get(String(message.senderId)) || null,
-    text: message.text,
-    attachments: message.attachments || [],
-    createdAt: message.createdAt,
-    readBy: message.readBy || []
-  }));
-
+  const senderMap = await loadUsersMap(items.map((item) => item.senderId));
+  const messages = items.reverse().map((item) => sanitizeMessage(item, currentId, senderMap));
   return {
-    messages: ordered,
-    hasMore: messages.length === safeLimit
+    messages,
+    hasMore: items.length === Math.min(Number(limit) || 30, 60)
   };
 }
 
-export async function markConversationRead(currentUserId, conversationId) {
-  const safeCurrentUserId = ensureValidObjectId(currentUserId, 'ID do usuario atual');
-  const safeConversationId = ensureValidObjectId(conversationId, 'ID da conversa');
-  const conversation = await ChatConversation.findOne({ _id: safeConversationId, participantIds: safeCurrentUserId });
+export async function createMessage({ senderId, recipientId, conversationId, text = '', media = [], createdAtClient = null }) {
+  const senderObjectId = toObjectId(senderId, 'ID do remetente');
+  let conversation = null;
+
+  if (conversationId) {
+    const conversationObjectId = toObjectId(conversationId, 'ID da conversa');
+    conversation = await ChatConversation.findOne({ _id: conversationObjectId, participants: senderObjectId });
+  } else {
+    conversation = await getOrCreateDirectConversation(senderObjectId, recipientId);
+  }
+
   if (!conversation) {
     throw new AppError('Conversa nao encontrada', 404);
   }
-  conversation.unreadCounts.set(safeCurrentUserId, 0);
-  await conversation.save();
-  await ChatMessage.updateMany(
-    { conversationId: safeConversationId, readBy: { $ne: safeCurrentUserId } },
-    { $addToSet: { readBy: safeCurrentUserId } }
-  );
-  return true;
-}
 
-export async function sendChatMessage({ senderId, conversationId, recipientId, text = '', attachments = [] }) {
-  const safeSenderId = ensureValidObjectId(senderId, 'ID do remetente');
-  const normalizedAttachments = (attachments || []).map((attachment) => ({
-    kind: attachment.kind === 'file' ? 'file' : attachment.kind === 'audio' ? 'audio' : 'image',
-    name: attachment.name || '',
-    url: attachment.url || '',
-    mimeType: attachment.mimeType || '',
-    size: Number(attachment.size || 0)
-  }));
-
-  let conversation = null;
-  if (conversationId) {
-    const safeConversationId = ensureValidObjectId(conversationId, 'ID da conversa');
-    conversation = await ChatConversation.findOne({ _id: safeConversationId, participantIds: safeSenderId });
-  } else if (recipientId) {
-    conversation = await getOrCreateDirectConversation(safeSenderId, recipientId);
-  }
-
-  if (!conversation) {
-    throw new AppError('Conversa nao encontrada para envio', 404);
+  const safeText = String(text || '').trim();
+  if (!safeText && !(media || []).length) {
+    throw new AppError('Mensagem vazia', 400);
   }
 
   const message = await ChatMessage.create({
-    conversationId: String(conversation._id),
-    senderId: safeSenderId,
-    text: text || '',
-    attachments: normalizedAttachments,
-    readBy: [safeSenderId]
+    conversationId: conversation._id,
+    senderId: senderObjectId,
+    text: safeText,
+    encryptedText: safeText ? encryptMessageText(safeText) : '',
+    media,
+    createdAtClient,
+    readBy: [senderObjectId]
   });
 
-  conversation.lastMessageText = previewText(text, normalizedAttachments);
+  conversation.lastMessageId = message._id;
+  conversation.lastMessagePreview = messagePreview({ text: safeText, media });
   conversation.lastMessageAt = message.createdAt;
-  conversation.lastMessageSenderId = safeSenderId;
-  conversation.lastAttachments = normalizedAttachments;
-  for (const participantId of conversation.participantIds) {
-    if (String(participantId) === safeSenderId) {
-      conversation.unreadCounts.set(String(participantId), 0);
-    } else {
-      conversation.unreadCounts.set(String(participantId), unreadFor(conversation, participantId) + 1);
-    }
-  }
   await conversation.save();
 
-  const participantMap = await hydrateParticipantMap(conversation.participantIds);
-  const sender = participantMap.get(safeSenderId) || null;
-
+  const senderMap = await loadUsersMap(conversation.participants);
   return {
-    conversation: buildConversationView(conversation.toObject ? conversation.toObject() : conversation, safeSenderId, participantMap),
-    message: {
-      id: String(message._id),
-      conversationId: String(conversation._id),
-      senderId: safeSenderId,
-      sender,
-      text: message.text,
-      attachments: normalizedAttachments,
-      createdAt: message.createdAt,
-      readBy: message.readBy
-    }
+    conversation: await getConversationDetail(senderObjectId, conversation._id),
+    message: sanitizeMessage(message.toObject(), senderObjectId, senderMap)
   };
+}
+
+export async function deleteMessageForMe(currentUserId, messageId) {
+  const currentId = toObjectId(currentUserId, 'ID do usuario atual');
+  const messageObjectId = toObjectId(messageId, 'ID da mensagem');
+  const message = await ChatMessage.findById(messageObjectId);
+  if (!message) {
+    throw new AppError('Mensagem nao encontrada', 404);
+  }
+  if (!message.deletedFor.some((id) => String(id) === String(currentId))) {
+    message.deletedFor.push(currentId);
+    await message.save();
+  }
+  return { messageId: String(message._id), deletedForUserId: String(currentId) };
+}
+
+export async function deleteMessageForEveryone(currentUserId, messageId) {
+  const currentId = toObjectId(currentUserId, 'ID do usuario atual');
+  const messageObjectId = toObjectId(messageId, 'ID da mensagem');
+  const message = await ChatMessage.findById(messageObjectId);
+  if (!message) {
+    throw new AppError('Mensagem nao encontrada', 404);
+  }
+  if (String(message.senderId) !== String(currentId)) {
+    throw new AppError('Apenas o remetente pode apagar para todos', 403);
+  }
+  message.text = '';
+  message.encryptedText = '';
+  message.media = [];
+  message.deletedForEveryone = true;
+  await message.save();
+  return { messageId: String(message._id), conversationId: String(message.conversationId) };
 }

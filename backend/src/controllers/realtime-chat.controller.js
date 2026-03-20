@@ -1,11 +1,29 @@
-import mongoose from 'mongoose';
-import { listChatContacts, listChatConversations, getConversationDetail, listMessages, getOrCreateDirectConversation, markConversationRead } from '../chat/chat.service.js';
+import {
+  addContact,
+  createMessage,
+  deleteMessageForEveryone,
+  deleteMessageForMe,
+  getConversationDetail,
+  getOrCreateDirectConversation,
+  listChatContacts,
+  listChatConversations,
+  listMessages
+} from '../chat/chat.service.js';
+import { mapUploadedFile } from '../config/upload.js';
 
 export async function getContacts(req, res, next) {
   try {
     const contacts = await listChatContacts(req.user.id, req.query.q || '');
-    console.log('contacts enviados:', contacts.map((contact) => ({ id: contact.id, _id: contact._id, username: contact.username })));
     res.json({ success: true, contacts });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function addContactToList(req, res, next) {
+  try {
+    const contact = await addContact(req.user.id, req.body.contactId);
+    res.status(201).json({ success: true, contact });
   } catch (error) {
     next(error);
   }
@@ -22,28 +40,9 @@ export async function getConversations(req, res, next) {
 
 export async function createDirectConversation(req, res, next) {
   try {
-    const participantId = String(req.body.participantId || req.body._id || '').trim();
-    const participantUsername = String(req.body.participantUsername || req.body.username || '').trim().toLowerCase();
-    console.log('createDirectConversation payload:', {
-      currentUserId: req.user.id,
-      participantId,
-      participantUsername
-    });
-
-    if (!participantId && !participantUsername) {
-      return res.status(400).json({ success: false, message: 'ID invalido' });
-    }
-
-    if (participantId && !mongoose.Types.ObjectId.isValid(participantId) && !participantUsername) {
-      return res.status(400).json({ success: false, message: 'ID invalido' });
-    }
-
-    const participantReference = mongoose.Types.ObjectId.isValid(participantId)
-      ? participantId
-      : participantUsername;
-
-    const conversation = await getOrCreateDirectConversation(req.user.id, participantReference);
-    const detail = await getConversationDetail(req.user.id, conversation.id);
+    const reference = req.body.participantId || req.body.participantEmail || '';
+    const conversation = await getOrCreateDirectConversation(req.user.id, reference);
+    const detail = await getConversationDetail(req.user.id, conversation._id);
     res.status(201).json({ success: true, conversation: detail });
   } catch (error) {
     next(error);
@@ -62,10 +61,48 @@ export async function getConversationMessages(req, res, next) {
   }
 }
 
-export async function markRead(req, res, next) {
+export async function uploadMedia(req, res, next) {
   try {
-    await markConversationRead(req.user.id, req.params.conversationId);
-    res.json({ success: true });
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const files = (req.files || []).map((file) => {
+      const mapped = mapUploadedFile(file);
+      return { ...mapped, url: `${baseUrl}${mapped.url}` };
+    });
+    res.status(201).json({ success: true, files });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function createConversationMessage(req, res, next) {
+  try {
+    const payload = await createMessage({
+      senderId: req.user.id,
+      conversationId: req.params.conversationId === 'new' ? null : req.params.conversationId,
+      recipientId: req.body.recipientId,
+      text: req.body.text,
+      media: req.body.media || [],
+      createdAtClient: req.body.createdAtClient || null
+    });
+    res.status(201).json({ success: true, ...payload });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function removeMessageForMe(req, res, next) {
+  try {
+    const payload = await deleteMessageForMe(req.user.id, req.params.messageId);
+    res.json({ success: true, ...payload });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function removeMessageForEveryone(req, res, next) {
+  try {
+    const payload = await deleteMessageForEveryone(req.user.id, req.params.messageId);
+    res.json({ success: true, ...payload });
   } catch (error) {
     next(error);
   }

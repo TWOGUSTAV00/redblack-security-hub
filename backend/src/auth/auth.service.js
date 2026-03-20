@@ -7,10 +7,9 @@ import { AppError } from '../utils/errors.js';
 function signToken(user) {
   return jwt.sign(
     {
-      sub: user.id,
-      username: user.username,
-      displayName: user.displayName,
-      plan: user.plan,
+      sub: String(user._id),
+      email: user.email || '',
+      name: user.name || user.displayName || user.legacyUsername || user.username || 'Usuario',
       avatarUrl: user.avatarUrl || ''
     },
     env.JWT_SECRET,
@@ -18,70 +17,68 @@ function signToken(user) {
   );
 }
 
-function sanitizeUser(user) {
+export function sanitizeUser(user) {
   return {
-    _id: String(user._id || user.id),
-    id: user.id,
-    username: user.username,
-    name: user.displayName,
-    plan: user.plan,
-    avatarUrl: user.avatarUrl || ''
+    id: String(user._id),
+    _id: String(user._id),
+    name: user.name || user.displayName || user.legacyUsername || user.username || 'Usuario',
+    email: user.email || '',
+    avatarUrl: user.avatarUrl || '',
+    status: user.status || 'offline'
   };
 }
 
-export async function registerUser({ username, password, displayName }) {
-  const normalizedUsername = String(username || '').trim().toLowerCase();
-  const safeDisplayName = String(displayName || username || '').trim();
+export async function registerUser({ name, email, password }) {
+  const safeName = String(name || '').trim();
+  const safeEmail = String(email || '').trim().toLowerCase();
+  const safePassword = String(password || '');
 
-  if (normalizedUsername.length < 3) {
-    throw new AppError('Usuario precisa ter pelo menos 3 caracteres', 400);
-  }
-  if (String(password || '').length < 6) {
-    throw new AppError('Senha precisa ter pelo menos 6 caracteres', 400);
-  }
+  if (safeName.length < 2) throw new AppError('Nome precisa ter pelo menos 2 caracteres', 400);
+  if (!safeEmail.includes('@')) throw new AppError('Email invalido', 400);
+  if (safePassword.length < 6) throw new AppError('Senha precisa ter pelo menos 6 caracteres', 400);
 
-  const exists = await User.findOne({ username: normalizedUsername });
-  if (exists) {
-    throw new AppError('Este usuario ja existe', 409);
-  }
+  const exists = await User.findOne({ email: safeEmail });
+  if (exists) throw new AppError('Este email ja esta em uso', 409);
 
-  const passwordHash = await bcrypt.hash(password, 10);
+  const passwordHash = await bcrypt.hash(safePassword, 10);
   const user = await User.create({
-    username: normalizedUsername,
-    displayName: safeDisplayName,
-    passwordHash
+    name: safeName,
+    email: safeEmail,
+    passwordHash,
+    legacyUsername: safeEmail.split('@')[0],
+    status: 'offline'
   });
 
-  return {
-    token: signToken(user),
-    user: sanitizeUser(user)
-  };
+  return { token: signToken(user), user: sanitizeUser(user) };
 }
 
-export async function loginUser({ username, password }) {
-  const normalizedUsername = String(username || '').trim().toLowerCase();
-  const user = await User.findOne({ username: normalizedUsername });
-  if (!user) {
-    throw new AppError('Usuario ou senha invalidos', 401);
-  }
+export async function loginUser({ email, password }) {
+  const safeIdentifier = String(email || '').trim().toLowerCase();
+  const user = await User.findOne({
+    $or: [
+      { email: safeIdentifier },
+      { legacyUsername: safeIdentifier },
+      { username: safeIdentifier }
+    ]
+  });
+  if (!user) throw new AppError('Email ou senha invalidos', 401);
 
-  const matches = await bcrypt.compare(password, user.passwordHash);
-  if (!matches) {
-    throw new AppError('Usuario ou senha invalidos', 401);
-  }
+  const matches = await bcrypt.compare(String(password || ''), user.passwordHash);
+  if (!matches) throw new AppError('Email ou senha invalidos', 401);
 
-  return {
-    token: signToken(user),
-    user: sanitizeUser(user)
-  };
+  await User.updateOne({ _id: user._id }, { $set: { status: 'online' } });
+
+  return { token: signToken(user), user: sanitizeUser({ ...user.toObject(), status: 'online' }) };
 }
 
 export async function getProfile(userId) {
   const user = await User.findById(userId);
-  if (!user) {
-    throw new AppError('Usuario nao encontrado', 404);
-  }
+  if (!user) throw new AppError('Usuario nao encontrado', 404);
   return sanitizeUser(user);
+}
+
+export async function setUserStatus(userId, status) {
+  await User.updateOne({ _id: userId }, { $set: { status } });
 }
 
 export function verifyToken(token) {
