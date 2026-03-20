@@ -20,7 +20,14 @@ export async function getConversations(req, res, next) {
 
 export async function createDirectConversation(req, res, next) {
   try {
-    const conversation = await getOrCreateDirectConversation(req.user.id, req.body.participantId);
+    const participantReference = req.body.participantId || req.body.participantUsername || req.body.username || '';
+    console.log('createDirectConversation payload:', {
+      currentUserId: req.user.id,
+      participantId: req.body.participantId,
+      participantUsername: req.body.participantUsername,
+      username: req.body.username
+    });
+    const conversation = await getOrCreateDirectConversation(req.user.id, participantReference);
     const detail = await getConversationDetail(req.user.id, conversation.id);
     res.status(201).json({ success: true, conversation: detail });
   } catch (error) {

@@ -17,11 +17,11 @@ export function listConversations(token) {
   });
 }
 
-export function createDirectConversation(token, participantId) {
+export function createDirectConversation(token, participantId, participantUsername = '') {
   return apiFetch('/realtime-chat/conversations/direct', {
     method: 'POST',
     headers: authHeaders(token),
-    body: JSON.stringify({ participantId })
+    body: JSON.stringify({ participantId, participantUsername })
   });
 }
 

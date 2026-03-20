@@ -115,7 +115,7 @@ export function useRealtimeChat({ token, user }) {
     setError('');
     setSelectedContact(normalizedContact);
     try {
-      const data = await createDirectConversation(token, participantReference);
+      const data = await createDirectConversation(token, participantReference, normalizedContact?.username || '');
       const conversation = {
         ...data.conversation,
         id: getEntityId(data.conversation),
